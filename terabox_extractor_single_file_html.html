@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Extractor Multi-Servidores — Painel Completo</title>
+<style>
+:root{--bg:#071024;--panel:#071226;--muted:#9fb0c8;--accent:#06b6d4;--card:#0b1622}
+*{box-sizing:border-box;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial}
+body{margin:0;background:linear-gradient(180deg,#041124,#071a2a);color:#e6eef6;min-height:100vh;display:flex}
+.sidebar{width:320px;padding:18px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.04));backdrop-filter:blur(6px);overflow:auto}
+.brand{font-weight:700;font-size:16px;color:var(--accent);margin-bottom:10px}
+.small{font-size:13px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;cursor:pointer}
+.btn.primary{background:linear-gradient(90deg,#06b6d4,#7c3aed);color:white}
+.input, textarea, select{width:100%;padding:10px;border-radius:8px;background:#021427;border:1px solid rgba(255,255,255,0.03);color:inherit;margin-top:8px}
+.content{flex:1;padding:18px;overflow:auto}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03));padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.folder-card{padding:12px;border-radius:10px;background:#021427}
+.folder-title{font-weight:700}
+.item{padding:8px;border-radius:8px;background:#061826;margin-top:8px;display:flex;justify-content:space-between;align-items:center}
+.item small{color:var(--muted)}
+.controls{display:flex;gap:8px;margin-top:8px}
+.footer-note{font-size:13px;color:var(--muted);margin-top:8px}
+.tag{background:rgba(255,255,255,0.03);padding:4px 8px;border-radius:999px;font-size:12px}
+.file-input{display:flex;gap:8px;align-items:center}
+@media(max-width:900px){.sidebar{display:none}}
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <div class="brand">Extractor Multi-Servidores</div>
+  <div class="small">Crie pastas, adicione URLs (Terabox, Google Drive, MEGA, Pendrive/local etc.), importe/exporte e extraia automaticamente onde possível.</div>
+
+  <div class="card">
+    <div class="small">Criar pasta</div>
+    <input id="folderName" class="input" placeholder="Nome da pasta (ex: Tubarão)" />
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input id="singleUrl" class="input" placeholder="Cole uma URL (opcional)" />
+    </div>
+    <div class="controls">
+      <button class="btn primary" id="createFolder">Criar + Adicionar</button>
+      <button class="btn" id="importTxtBtn">Importar TXT</button>
+    </div>
+    <div class="footer-note">Você também pode arrastar e soltar arquivos locais (pendrive) ao painel principal para adicioná-los como URLs locais.</div>
+  </div>
+
+  <div class="card">
+    <div class="small">Bookmarklets / Extração automática</div>
+    <div class="footer-note" style="margin-top:6px">Para extrair automaticamente de páginas que bloqueiam CORS (Terabox / Google Drive), abra a pasta em outra aba e execute o bookmarklet — ele enviará os dados de volta ao painel.</div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+      <button class="btn" id="copyTeraboxBM">📋 Copiar Bookmarklet (TeraBox)</button>
+      <button class="btn" id="copyDriveBM">📋 Copiar Bookmarklet (Google Drive)</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="small">Importar/Exportar</div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input id="fileUpload" type="file" class="input" />
+    </div>
+    <div class="controls">
+      <button class="btn" id="exportTxt">Exportar TXT</button>
+      <button class="btn" id="exportCsv">Exportar CSV</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="small">Opções de ordenação</div>
+    <select id="sortMode" class="input">
+      <option value="natural">Ordem detectada (natural)</option>
+      <option value="episodic">Ordenar por episódio (E01, Ep.1, Capítulo)</option>
+      <option value="alpha">Alfabética</option>
+    </select>
+    <button class="btn" id="applySort">Aplicar ordenação</button>
+  </div>
+
+  <div style="height:40px"></div>
+</div>
+
+<div class="content">
+  <div class="header">
+    <div>
+      <div style="font-size:20px;font-weight:700">Painel de Pastas</div>
+      <div class="small">Arraste arquivos locais aqui, use bookmarklets para extração automática em páginas públicas ou cole URLs manualmente.</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="search" class="input" placeholder="Filtrar por nome / URL..." style="width:320px" />
+      <button class="btn" id="clearAll">Limpar tudo</button>
+    </div>
+  </div>
+
+  <div id="foldersGrid" class="grid"></div>
+
+  <div class="card">
+    <div class="small">Console / Log</div>
+    <textarea id="log" style="height:120px;width:100%;margin-top:8px;background:#021427;border:1px solid rgba(255,255,255,0.03);color:inherit;padding:8px;border-radius:8px" readonly></textarea>
+  </div>
+</div>
+
+<script>
+// --- Data model ---
+let FOLDERS = {}; // {name: [{id,url,server,label,source,local}], ...}
+let uidCounter = 1;
+const logEl = document.getElementById('log');
+function log(msg){ logEl.value = new Date().toLocaleTimeString() + ' — ' + msg + '\n' + logEl.value; }
+
+// --- Utilities ---
+function genId(){ return 'i'+(uidCounter++); }
+function detectServer(url){
+  if(!url) return 'local';
+  const u = url.toLowerCase();
+  if(u.includes('terabox')||u.includes('baidupcs')||u.includes('1024terabox')) return 'TeraBox';
+  if(u.includes('drive.google')||u.includes('docs.google')) return 'Google Drive';
+  if(u.includes('mega.nz')) return 'MEGA';
+  if(u.startsWith('file://')||u.startsWith('blob:')||u.startsWith('data:')) return 'Local';
+  if(u.includes('dropbox.com')) return 'Dropbox';
+  return 'Outro';
+}
+
+// Normalize name (strip extensions for display)
+function niceNameFromUrl(url){ try{ const u = new URL(url); let p = decodeURIComponent(u.pathname.split('/').pop()||u.hostname); return p.replace(/\+/g,' '); }catch(e){ return url; } }
+
+// Episode detection
+function episodeKey(name){ if(!name) return Number.MAX_SAFE_INTEGER;
+  const s = name.toLowerCase();
+  // patterns: e01, ep01, ep.01, episodio 01, capítulo 01, cap 01
+  const m = s.match(/(?:ep(?:isod)?|epis[oó]dio|cap(?:ítulo|itulo)?|cap|s\d+e(\d+)|e\.?\s*(\d{1,3})|ep\.?\s*(\d{1,3})|ep(\d{1,3}))[^\d]*(\d{0,3})/);
+  if(m){
+    for(let i=1;i<m.length;i++){ if(m[i]) return parseInt(m[i].replace(/^0+/,'')) || 0; }
+  }
+  // fallback: digits in name
+  const m2 = s.match(/(\d{1,3})/);
+  if(m2) return parseInt(m2[1]);
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function sortFolderItems(items, mode){
+  if(mode==='alpha') return items.sort((a,b)=> (niceNameFromUrl(a.label||a.url).localeCompare(niceNameFromUrl(b.label||b.url))));
+  if(mode==='episodic') return items.sort((a,b)=> (episodeKey(a.label||a.url) - episodeKey(b.label||b.url)));
+  // natural: keep insertion but try numeric
+  return items.sort((a,b)=> (episodeKey(a.label||a.url) - episodeKey(b.label||b.url)));
+}
+
+// --- Rendering ---
+const foldersGrid = document.getElementById('foldersGrid');
+function render(){
+  const q = document.getElementById('search').value.toLowerCase().trim();
+  foldersGrid.innerHTML = '';
+  for(const name in FOLDERS){
+    const col = document.createElement('div'); col.className='folder-card card';
+    const title = document.createElement('div'); title.className='folder-title'; title.textContent = name + ` `;
+    const stats = document.createElement('span'); stats.className='tag'; stats.textContent = FOLDERS[name].length + ' items';
+    title.appendChild(stats);
+    col.appendChild(title);
+
+    const controls = document.createElement('div'); controls.style.marginTop='8px';
+    const btnExtract = document.createElement('button'); btnExtract.className='btn'; btnExtract.textContent='Extrair (bookmarklet)';
+    btnExtract.onclick = ()=>{ openAndGuideExtract(name); };
+    const btnClear = document.createElement('button'); btnClear.className='btn'; btnClear.textContent='Limpar pasta'; btnClear.onclick = ()=>{ if(confirm('Limpar pasta '+name+'?')){ FOLDERS[name]=[]; render(); } };
+    controls.appendChild(btnExtract); controls.appendChild(btnClear);
+    col.appendChild(controls);
+
+    // items
+    const items = sortFolderItems([...FOLDERS[name]], document.getElementById('sortMode').value);
+    items.forEach(it=>{
+      if(q && !( (it.label||'').toLowerCase().includes(q) || (it.url||'').toLowerCase().includes(q) )) return;
+      const div = document.createElement('div'); div.className='item';
+      const left = document.createElement('div'); left.innerHTML = `<div style=\"font-weight:600\">${it.label||niceNameFromUrl(it.url)}</div><small>${it.server} • ${it.url}</small>`;
+      const right = document.createElement('div');
+      const aOpen = document.createElement('a'); aOpen.href = it.url; aOpen.target='_blank'; aOpen.className='btn'; aOpen.textContent='Abrir';
+      const aCopy = document.createElement('button'); aCopy.className='btn'; aCopy.textContent='Copiar'; aCopy.onclick=()=>{ navigator.clipboard.writeText(it.url); log('Copiado: '+it.url); };
+      right.appendChild(aOpen); right.appendChild(aCopy);
+      div.appendChild(left); div.appendChild(right);
+      col.appendChild(div);
+    });
+
+    foldersGrid.appendChild(col);
+  }
+}
+
+// --- Folder management ---
+document.getElementById('createFolder').addEventListener('click', ()=>{
+  const name = document.getElementById('folderName').value.trim();
+  const url = document.getElementById('singleUrl').value.trim();
+  if(!name){ alert('Digite o nome da pasta'); return; }
+  if(!FOLDERS[name]) FOLDERS[name]=[];
+  if(url){ addUrlToFolder(name, url, 'manual'); document.getElementById('singleUrl').value=''; }
+  render();
+  log('Pasta criada: '+name);
+});
+
+function addUrlToFolder(folder, url, sourceLabel='manual', label=null){
+  if(!FOLDERS[folder]) FOLDERS[folder]=[];
+  const item = { id: genId(), url: url, server: detectServer(url), label: label||niceNameFromUrl(url), source: sourceLabel };
+  FOLDERS[folder].push(item);
+}
+
+// Drag & drop local files
+window.addEventListener('dragover', e=>{ e.preventDefault(); });
+window.addEventListener('drop', e=>{ e.preventDefault(); const files = Array.from(e.dataTransfer.files); if(!files.length) return; // prompt folder
+  const folder = prompt('Nome da pasta para adicionar os arquivos arrastados:','Arquivos Locais'); if(!folder) return; if(!FOLDERS[folder]) FOLDERS[folder]=[];
+  files.forEach(f=>{
+    const url = URL.createObjectURL(f);
+    addUrlToFolder(folder, url, 'local', f.name);
+    log('Arquivo local adicionado: '+f.name);
+  }); render();
+});
+
+// File upload (TXT/CSV)
+document.getElementById('fileUpload').addEventListener('change', async (ev)=>{
+  const f = ev.target.files[0]; if(!f) return; const text = await f.text();
+  // If txt: lines with optional "folder|url" or just url
+  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  // Determine if file contains folder markers
+  let currentFolder = prompt('Nome da pasta para importar (ou deixe em branco para usar nomes do arquivo como ' + f.name + ')', f.name.replace(/\.[^/.]+$/, '')) || f.name;
+  if(!FOLDERS[currentFolder]) FOLDERS[currentFolder]=[];
+  for(const ln of lines){
+    if(ln.includes('|')){
+      const [fld,u] = ln.split('|').map(s=>s.trim()); if(!FOLDERS[fld]) FOLDERS[fld]=[]; addUrlToFolder(fld,u,'import');
+    } else {
+      addUrlToFolder(currentFolder, ln, 'import');
+    }
+  }
+  render(); log('Arquivo importado: '+f.name+' → '+lines.length+' linhas');
+});
+
+// Import TXT button (paste)
+document.getElementById('importTxtBtn').addEventListener('click', ()=>{
+  const txt = prompt('Cole o conteúdo do TXT (uma URL por linha, ou linhas como Pasta|URL):'); if(!txt) return; const name = prompt('Nome da pasta (onde as URLs sem pasta irão):','Importado'); if(!FOLDERS[name]) FOLDERS[name]=[];
+  const lines = txt.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  lines.forEach(ln=>{ if(ln.includes('|')){ const [fld,u]=ln.split('|').map(s=>s.trim()); if(!FOLDERS[fld]) FOLDERS[fld]=[]; addUrlToFolder(fld,u,'import'); } else addUrlToFolder(name,ln,'import'); }); render(); log('Texto importado: '+lines.length+' linhas');
+});
+
+// Export
+function exportTXT(){ let out=''; for(const name in FOLDERS){ out += 'Pasta: '+name+'\n'; FOLDERS[name].forEach(it=> out += ` - [${it.server}] ${it.url}\n`); out += '\n'; } downloadBlob(out,'urls_export.txt'); }
+function exportCSV(){ let rows=['folder,name,url,server,source']; for(const name in FOLDERS){ FOLDERS[name].forEach(it=> rows.push(`${csvEscape(name)},${csvEscape(it.label)},${csvEscape(it.url)},${csvEscape(it.server)},${csvEscape(it.source)}`)); } downloadBlob(rows.join('\n'),'urls_export.csv'); }
+function csvEscape(s){ return '"'+String(s||'').replace(/"/g,'""')+'"'; }
+function downloadBlob(text,filename){ const blob = new Blob([text],{type:'text/plain'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); URL.revokeObjectURL(a.href); }
+
+document.getElementById('exportTxt').addEventListener('click', ()=>{ exportTXT(); log('Exportado TXT'); });
+document.getElementById('exportCsv').addEventListener('click', ()=>{ exportCSV(); log('Exportado CSV'); });
+
+document.getElementById('clearAll').addEventListener('click', ()=>{ if(confirm('Limpar todas as pastas?')){ FOLDERS={}; render(); log('Limpo geral'); } });
+
+// Apply sort button
+document.getElementById('applySort').addEventListener('click', ()=>{ render(); log('Ordenação aplicada: '+document.getElementById('sortMode').value); });
+
+document.getElementById('search').addEventListener('input', ()=>{ render(); });
+
+// --- Bookmarklets ---
+const teraboxBM = `javascript:(function(){
+  try{
+    const anchors = Array.from(document.querySelectorAll('a')).filter(a=>a.href && !a.href.includes('#'));
+    const items = anchors.map(a=>({href:a.href,text:a.innerText||a.title||a.getAttribute('title')||a.href}));
+    async function fetchDirect(url){ try{ const r = await fetch(url,{credentials:'include'}); const t = await r.text(); const doc = new DOMParser().parseFromString(t,'text/html'); const video = doc.querySelector('video'); if(video && video.src) return video.src; const m = t.match(/https?:\\/\\/d[0-9]+\\.baidupcs\\.com\\/file\\/[^"'\\s<>]*/); if(m) return m[0]; const og = doc.querySelector('meta[property="og:video"]')||doc.querySelector('meta[property="og:video:url"]'); if(og) return og.content; return null;}catch(e){return null;} }
+    (async()=>{ const results=[]; for(const it of items){ const direct = await fetchDirect(it.href); results.push({page:it.href, name:it.text, direct}); } window.opener.postMessage({type:'extract_results', server:'TeraBox', data:results, source:location.href},'*'); alert('Extração TeraBox concluída — volte ao painel.'); })();
+  }catch(e){alert('Erro: '+e.message)}
+})();`;
+
+const driveBM = `javascript:(function(){
+  try{
+    // para Google Drive em lista pública
+    const anchors = Array.from(document.querySelectorAll('a')).filter(a=>a.href && a.href.includes('/open') || a.href.includes('drive.google.com'));
+    const items = anchors.map(a=>({href:a.href,text:a.innerText||a.title||a.href}));
+    window.opener.postMessage({type:'extract_results', server:'Google Drive', data:items, source:location.href},'*');
+    alert('Extração Google Drive: dados enviados ao painel (separe links com /open?id=... ou view).');
+  }catch(e){alert('Erro: '+e.message)}
+})();`;
+
+function copyToClipboard(text){ navigator.clipboard.writeText(text).then(()=>{ alert('Bookmarklet copiado! Crie um favorito com ele e clique na aba da pasta pública.'); }, e=>{ prompt('Copie o código manualmente (Ctrl+C):', text); }); }
+
+document.getElementById('copyTeraboxBM').addEventListener('click', ()=> copyToClipboard(teraboxBM));
+document.getElementById('copyDriveBM').addEventListener('click', ()=> copyToClipboard(driveBM));
+
+// Receive postMessage from bookmarklet
+window.addEventListener('message', e=>{
+  try{
+    const d = e.data; if(!d || !d.type) return; if(d.type === 'extract_results'){
+      const folder = prompt('Nome da pasta para receber os resultados de extração (ex: Tubar\u00e3o)'); if(!folder) return; if(!FOLDERS[folder]) FOLDERS[folder]=[];
+      const arr = d.data || [];
+      arr.forEach(it=>{
+        const url = it.direct || it.page || it.href || it;
+        addUrlToFolder(folder, url, d.server || 'bookmarklet', it.name || it.text || niceNameFromUrl(url));
+      }); render(); log(`Recebido ${arr.length} itens de ${d.server} (${d.source})`);
+    }
+  }catch(err){ log('Erro ao processar postMessage: '+err.message); }
+});
+
+// Helper to open new tab and guide
+function openAndGuideExtract(folder){ const example = prompt('Deseja abrir a URL principal desta pasta para executar o bookmarklet? Cole a URL ou deixe em branco para só instruções.'); if(example){ window.open(example,'_blank'); alert('Abra a aba que abriu e execute o bookmarklet que você copiou no painel (favoritos). Ao terminar, volte aqui.'); } else { alert('Para extrair automaticamente: 1) abra a pasta no site (TeraBox / Google Drive) 2) clique no favorito com o bookmarklet 3) aguarde e confirme.'); } }
+
+// Open default examples if you want (preload)
+FOLDERS['Exemplo Tubar\u00e3o'] = [];
+FOLDERS['Exemplo Bob Esponja'] = [];
+render();
+log('Painel iniciado — pronto para uso.');
+</script>
+</body>
+</html>
