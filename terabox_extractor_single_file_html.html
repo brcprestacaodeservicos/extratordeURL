@@ -26,6 +26,12 @@ body{margin:0;background:linear-gradient(180deg,#041124,#071a2a);color:#e6eef6;m
 .footer-note{font-size:13px;color:var(--muted);margin-top:8px}
 .tag{background:rgba(255,255,255,0.03);padding:4px 8px;border-radius:999px;font-size:12px}
 .file-input{display:flex;gap:8px;align-items:center}
+.added-list{max-height:140px;overflow:auto;padding:8px;background:#061826;border-radius:8px;margin-bottom:8px}
+.added-row{padding:6px;border-bottom:1px dashed rgba(255,255,255,0.02);display:flex;justify-content:space-between;align-items:center}
+.overlay{position:fixed;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:9999}
+.modal{background:#071226;border:1px solid rgba(255,255,255,0.04);padding:16px;border-radius:12px;max-width:920px;width:92%;max-height:86%;overflow:auto}
+.checklist{max-height:420px;overflow:auto;margin-top:8px}
+.check-row{padding:8px;border-bottom:1px dashed rgba(255,255,255,0.02);display:flex;justify-content:space-between;align-items:center}
 @media(max-width:900px){.sidebar{display:none}}
 </style>
 </head>
@@ -37,11 +43,13 @@ body{margin:0;background:linear-gradient(180deg,#041124,#071a2a);color:#e6eef6;m
   <div class="card">
     <div class="small">Criar pasta</div>
     <input id="folderName" class="input" placeholder="Nome da pasta (ex: Tubarão)" />
-    <div style="display:flex;gap:8px;margin-top:8px">
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
       <input id="singleUrl" class="input" placeholder="Cole uma URL (opcional)" />
     </div>
-    <div class="controls">
+    <div class="controls" style="margin-top:8px">
       <button class="btn primary" id="createFolder">Criar + Adicionar</button>
+      <button class="btn" id="inspectUrlBtn">🔍 Inspecionar URL</button>
+      <button class="btn" id="jdCaptureBtn">⚡ Capturar (Estilo JDownloader)</button>
       <button class="btn" id="importTxtBtn">Importar TXT</button>
     </div>
     <div class="footer-note">Você também pode arrastar e soltar arquivos locais (pendrive) ao painel principal para adicioná-los como URLs locais.</div>
@@ -64,6 +72,8 @@ body{margin:0;background:linear-gradient(180deg,#041124,#071a2a);color:#e6eef6;m
     <div class="controls">
       <button class="btn" id="exportTxt">Exportar TXT</button>
       <button class="btn" id="exportCsv">Exportar CSV</button>
+      <button class="btn" id="exportM3U">Exportar M3U</button>
+      <button class="btn" id="exportM3U8">Exportar M3U8</button>
     </div>
   </div>
 
@@ -92,211 +102,206 @@ body{margin:0;background:linear-gradient(180deg,#041124,#071a2a);color:#e6eef6;m
     </div>
   </div>
 
+  <div class="card">
+    <div class="small">URLs adicionadas (Nome da pasta | Nome | URL)</div>
+    <div id="addedList" class="added-list"></div>
+  </div>
+
   <div id="foldersGrid" class="grid"></div>
 
   <div class="card">
     <div class="small">Console / Log</div>
-    <textarea id="log" style="height:120px;width:100%;margin-top:8px;background:#021427;border:1px solid rgba(255,255,255,0.03);color:inherit;padding:8px;border-radius:8px" readonly></textarea>
+    <textarea id="log" style="height:160px;width:100%;margin-top:8px;background:#021427;border:1px solid rgba(255,255,255,0.03);color:inherit;padding:8px;border-radius:8px" readonly></textarea>
+  </div>
+</div>
+
+<!-- Overlay modal for inspect results -->
+<div id="overlay" class="overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div style="display:flex;justify-content:space-between;align-items:center"><strong id="modalTitle">Inspecionar URL</strong><button class="btn" id="closeOverlay">Fechar</button></div>
+    <div id="modalBody" style="margin-top:8px">
+      <div class="small">Selecione as URLs encontradas para adicionar à pasta.</div>
+      <div id="checklist" class="checklist"></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn primary" id="addSelected">Adicionar Selecionados</button>
+        <button class="btn" id="copySelected">Copiar Selecionados</button>
+        <button class="btn" id="openInNewTab">Abrir Selecionados</button>
+        <button class="btn" id="exportSelectedTxt">Gerar TXT</button>
+        <button class="btn" id="exportSelectedM3U">Gerar M3U</button>
+      </div>
+    </div>
   </div>
 </div>
 
 <script>
-// --- Data model ---
-let FOLDERS = {}; // {name: [{id,url,server,label,source,local}], ...}
-let uidCounter = 1;
-const logEl = document.getElementById('log');
-function log(msg){ logEl.value = new Date().toLocaleTimeString() + ' — ' + msg + '\n' + logEl.value; }
+// All initialization after DOM ready to avoid null errors
+document.addEventListener('DOMContentLoaded', ()=>{
+  // --- Data model ---
+  let FOLDERS = {};
+  let uidCounter = 1;
+  const logEl = document.getElementById('log');
+  const addedListEl = document.getElementById('addedList');
 
-// --- Utilities ---
-function genId(){ return 'i'+(uidCounter++); }
-function detectServer(url){
-  if(!url) return 'local';
-  const u = url.toLowerCase();
-  if(u.includes('terabox')||u.includes('baidupcs')||u.includes('1024terabox')) return 'TeraBox';
-  if(u.includes('drive.google')||u.includes('docs.google')) return 'Google Drive';
-  if(u.includes('mega.nz')) return 'MEGA';
-  if(u.startsWith('file://')||u.startsWith('blob:')||u.startsWith('data:')) return 'Local';
-  if(u.includes('dropbox.com')) return 'Dropbox';
-  return 'Outro';
-}
+  function log(msg){ if(!logEl) return; logEl.value = new Date().toLocaleTimeString() + ' — ' + msg + '\n' + logEl.value; }
+  function genId(){ return 'i'+(uidCounter++); }
 
-// Normalize name (strip extensions for display)
-function niceNameFromUrl(url){ try{ const u = new URL(url); let p = decodeURIComponent(u.pathname.split('/').pop()||u.hostname); return p.replace(/\+/g,' '); }catch(e){ return url; } }
+  function detectServer(url){ if(!url) return 'local'; const u = url.toLowerCase(); if(u.includes('terabox')||u.includes('baidupcs')||u.includes('1024terabox')) return 'TeraBox'; if(u.includes('drive.google')||u.includes('docs.google')) return 'Google Drive'; if(u.includes('mega.nz')) return 'MEGA'; if(u.startsWith('file://')||u.startsWith('blob:')||u.startsWith('data:')) return 'Local'; if(u.includes('dropbox.com')) return 'Dropbox'; return 'Outro'; }
+  function niceNameFromUrl(url){ try{ const u = new URL(url); let p = decodeURIComponent(u.pathname.split('/').pop()||u.hostname); return p.replace(/\+/g,' '); }catch(e){ return url; } }
 
-// Episode detection
-function episodeKey(name){ if(!name) return Number.MAX_SAFE_INTEGER;
-  const s = name.toLowerCase();
-  // patterns: e01, ep01, ep.01, episodio 01, capítulo 01, cap 01
-  const m = s.match(/(?:ep(?:isod)?|epis[oó]dio|cap(?:ítulo|itulo)?|cap|s\d+e(\d+)|e\.?\s*(\d{1,3})|ep\.?\s*(\d{1,3})|ep(\d{1,3}))[^\d]*(\d{0,3})/);
-  if(m){
-    for(let i=1;i<m.length;i++){ if(m[i]) return parseInt(m[i].replace(/^0+/,'')) || 0; }
-  }
-  // fallback: digits in name
-  const m2 = s.match(/(\d{1,3})/);
-  if(m2) return parseInt(m2[1]);
-  return Number.MAX_SAFE_INTEGER;
-}
+  // episodeKey & sort
+  function episodeKey(name){ if(!name) return Number.MAX_SAFE_INTEGER; const s = name.toLowerCase(); const m = s.match(/(?:ep(?:isod)?|epis[oó]dio|cap(?:ítulo|itulo)?|cap|s\d+e(\d+)|e\.?\s*(\d{1,3})|ep\.?\s*(\d{1,3})|ep(\d{1,3}))[^\d]*(\d{0,3})/); if(m){ for(let i=1;i<m.length;i++){ if(m[i]) return parseInt(m[i].replace(/^0+/,'')) || 0; } } const m2 = s.match(/(\d{1,3})/); if(m2) return parseInt(m2[1]); return Number.MAX_SAFE_INTEGER; }
+  function sortFolderItems(items, mode){ if(mode==='alpha') return items.sort((a,b)=> (niceNameFromUrl(a.label||a.url).localeCompare(niceNameFromUrl(b.label||b.url)))); if(mode==='episodic') return items.sort((a,b)=> (episodeKey(a.label||a.url) - episodeKey(b.label||b.url))); return items.sort((a,b)=> (episodeKey(a.label||a.url) - episodeKey(b.label||b.url))); }
 
-function sortFolderItems(items, mode){
-  if(mode==='alpha') return items.sort((a,b)=> (niceNameFromUrl(a.label||a.url).localeCompare(niceNameFromUrl(b.label||b.url))));
-  if(mode==='episodic') return items.sort((a,b)=> (episodeKey(a.label||a.url) - episodeKey(b.label||b.url)));
-  // natural: keep insertion but try numeric
-  return items.sort((a,b)=> (episodeKey(a.label||a.url) - episodeKey(b.label||b.url)));
-}
+  // Rendering
+  const foldersGrid = document.getElementById('foldersGrid');
+  function render(){ renderAddedList(); const qEl = document.getElementById('search'); const q = (qEl && qEl.value ? qEl.value.toLowerCase().trim() : ''); if(!foldersGrid) return; foldersGrid.innerHTML = ''; for(const name in FOLDERS){ const col = document.createElement('div'); col.className='folder-card card'; const title = document.createElement('div'); title.className='folder-title'; title.textContent = name + ` `; const stats = document.createElement('span'); stats.className='tag'; stats.textContent = FOLDERS[name].length + ' items'; title.appendChild(stats); col.appendChild(title);
 
-// --- Rendering ---
-const foldersGrid = document.getElementById('foldersGrid');
-function render(){
-  const q = document.getElementById('search').value.toLowerCase().trim();
-  foldersGrid.innerHTML = '';
-  for(const name in FOLDERS){
-    const col = document.createElement('div'); col.className='folder-card card';
-    const title = document.createElement('div'); title.className='folder-title'; title.textContent = name + ` `;
-    const stats = document.createElement('span'); stats.className='tag'; stats.textContent = FOLDERS[name].length + ' items';
-    title.appendChild(stats);
-    col.appendChild(title);
+      const controls = document.createElement('div'); controls.style.marginTop='8px';
+      const btnExtract = document.createElement('button'); btnExtract.className='btn'; btnExtract.textContent='Extrair (bookmarklet)'; btnExtract.onclick = ()=>{ openAndGuideExtract(name); };
+      const btnEdit = document.createElement('button'); btnEdit.className='btn'; btnEdit.textContent='Editar'; btnEdit.onclick = ()=>{ const newName = prompt('Novo nome da pasta:', name); if(newName && newName!==name){ FOLDERS[newName]=FOLDERS[name]; delete FOLDERS[name]; render(); log('Pasta renomeada: '+name+' → '+newName); } };
+      const btnDelete = document.createElement('button'); btnDelete.className='btn'; btnDelete.textContent='Excluir'; btnDelete.onclick = ()=>{ if(confirm('Excluir pasta '+name+'?')){ delete FOLDERS[name]; render(); log('Pasta excluída: '+name); } };
+      controls.appendChild(btnExtract); controls.appendChild(btnEdit); controls.appendChild(btnDelete); col.appendChild(controls);
 
-    const controls = document.createElement('div'); controls.style.marginTop='8px';
-    const btnExtract = document.createElement('button'); btnExtract.className='btn'; btnExtract.textContent='Extrair (bookmarklet)';
-    btnExtract.onclick = ()=>{ openAndGuideExtract(name); };
-    const btnClear = document.createElement('button'); btnClear.className='btn'; btnClear.textContent='Limpar pasta'; btnClear.onclick = ()=>{ if(confirm('Limpar pasta '+name+'?')){ FOLDERS[name]=[]; render(); } };
-    controls.appendChild(btnExtract); controls.appendChild(btnClear);
-    col.appendChild(controls);
+      const items = sortFolderItems([...FOLDERS[name]], document.getElementById('sortMode').value);
+      items.forEach(it=>{ if(q && !( (it.label||'').toLowerCase().includes(q) || (it.url||'').toLowerCase().includes(q) )) return; const div = document.createElement('div'); div.className='item'; const left = document.createElement('div'); left.innerHTML = `<div style=\\"font-weight:600\\">${it.label||niceNameFromUrl(it.url)}</div><small>${it.server} • ${it.url}</small>`; const right = document.createElement('div'); const aOpen = document.createElement('a'); aOpen.href = it.url; aOpen.target='_blank'; aOpen.className='btn'; aOpen.textContent='Abrir'; const aCopy = document.createElement('button'); aCopy.className='btn'; aCopy.textContent='Copiar'; aCopy.onclick=()=>{ navigator.clipboard.writeText(it.url); log('Copiado: '+it.url); }; const aRemove = document.createElement('button'); aRemove.className='btn'; aRemove.textContent='Remover'; aRemove.onclick=()=>{ if(confirm('Remover esta URL?')){ FOLDERS[name] = FOLDERS[name].filter(x=>x.id!==it.id); render(); log('URL removida: '+it.url); } }; right.appendChild(aOpen); right.appendChild(aCopy); right.appendChild(aRemove); div.appendChild(left); div.appendChild(right); col.appendChild(div); });
 
-    // items
-    const items = sortFolderItems([...FOLDERS[name]], document.getElementById('sortMode').value);
-    items.forEach(it=>{
-      if(q && !( (it.label||'').toLowerCase().includes(q) || (it.url||'').toLowerCase().includes(q) )) return;
-      const div = document.createElement('div'); div.className='item';
-      const left = document.createElement('div'); left.innerHTML = `<div style=\"font-weight:600\">${it.label||niceNameFromUrl(it.url)}</div><small>${it.server} • ${it.url}</small>`;
-      const right = document.createElement('div');
-      const aOpen = document.createElement('a'); aOpen.href = it.url; aOpen.target='_blank'; aOpen.className='btn'; aOpen.textContent='Abrir';
-      const aCopy = document.createElement('button'); aCopy.className='btn'; aCopy.textContent='Copiar'; aCopy.onclick=()=>{ navigator.clipboard.writeText(it.url); log('Copiado: '+it.url); };
-      right.appendChild(aOpen); right.appendChild(aCopy);
-      div.appendChild(left); div.appendChild(right);
-      col.appendChild(div);
-    });
-
-    foldersGrid.appendChild(col);
-  }
-}
-
-// --- Folder management ---
-document.getElementById('createFolder').addEventListener('click', ()=>{
-  const name = document.getElementById('folderName').value.trim();
-  const url = document.getElementById('singleUrl').value.trim();
-  if(!name){ alert('Digite o nome da pasta'); return; }
-  if(!FOLDERS[name]) FOLDERS[name]=[];
-  if(url){ addUrlToFolder(name, url, 'manual'); document.getElementById('singleUrl').value=''; }
-  render();
-  log('Pasta criada: '+name);
-});
-
-function addUrlToFolder(folder, url, sourceLabel='manual', label=null){
-  if(!FOLDERS[folder]) FOLDERS[folder]=[];
-  const item = { id: genId(), url: url, server: detectServer(url), label: label||niceNameFromUrl(url), source: sourceLabel };
-  FOLDERS[folder].push(item);
-}
-
-// Drag & drop local files
-window.addEventListener('dragover', e=>{ e.preventDefault(); });
-window.addEventListener('drop', e=>{ e.preventDefault(); const files = Array.from(e.dataTransfer.files); if(!files.length) return; // prompt folder
-  const folder = prompt('Nome da pasta para adicionar os arquivos arrastados:','Arquivos Locais'); if(!folder) return; if(!FOLDERS[folder]) FOLDERS[folder]=[];
-  files.forEach(f=>{
-    const url = URL.createObjectURL(f);
-    addUrlToFolder(folder, url, 'local', f.name);
-    log('Arquivo local adicionado: '+f.name);
-  }); render();
-});
-
-// File upload (TXT/CSV)
-document.getElementById('fileUpload').addEventListener('change', async (ev)=>{
-  const f = ev.target.files[0]; if(!f) return; const text = await f.text();
-  // If txt: lines with optional "folder|url" or just url
-  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  // Determine if file contains folder markers
-  let currentFolder = prompt('Nome da pasta para importar (ou deixe em branco para usar nomes do arquivo como ' + f.name + ')', f.name.replace(/\.[^/.]+$/, '')) || f.name;
-  if(!FOLDERS[currentFolder]) FOLDERS[currentFolder]=[];
-  for(const ln of lines){
-    if(ln.includes('|')){
-      const [fld,u] = ln.split('|').map(s=>s.trim()); if(!FOLDERS[fld]) FOLDERS[fld]=[]; addUrlToFolder(fld,u,'import');
-    } else {
-      addUrlToFolder(currentFolder, ln, 'import');
+      foldersGrid.appendChild(col);
     }
   }
-  render(); log('Arquivo importado: '+f.name+' → '+lines.length+' linhas');
+
+  function renderAddedList(){ if(!addedListEl) return; addedListEl.innerHTML = ''; for(const name in FOLDERS){ FOLDERS[name].forEach(it=>{ const row = document.createElement('div'); row.className='added-row'; row.innerHTML = `<div><strong>${name}</strong> | ${it.label||niceNameFromUrl(it.url)}</div><div><a href='${it.url}' target='_blank' class='small'>${it.url}</a></div>`; addedListEl.appendChild(row); }); } }
+
+  // Folder management
+  const createFolderBtn = document.getElementById('createFolder'); if(createFolderBtn) createFolderBtn.addEventListener('click', ()=>{ const nameEl = document.getElementById('folderName'); const singleUrlEl = document.getElementById('singleUrl'); const name = nameEl ? nameEl.value.trim() : ''; const url = singleUrlEl ? singleUrlEl.value.trim() : ''; if(!name){ alert('Digite o nome da pasta'); return; } if(!FOLDERS[name]) FOLDERS[name]=[]; if(url){ addUrlToFolder(name, url, 'manual'); if(singleUrlEl) singleUrlEl.value=''; } render(); log('Pasta criada: '+name); });
+
+  function addUrlToFolder(folder, url, sourceLabel='manual', label=null){ if(!FOLDERS[folder]) FOLDERS[folder]=[]; const item = { id: genId(), url: url, server: detectServer(url), label: label||niceNameFromUrl(url), source: sourceLabel }; FOLDERS[folder].push(item); }
+
+  // Drag & drop
+  window.addEventListener('dragover', e=>{ e.preventDefault(); }); window.addEventListener('drop', e=>{ e.preventDefault(); const files = Array.from(e.dataTransfer.files || []); if(!files.length) return; const folder = prompt('Nome da pasta para adicionar os arquivos arrastados:','Arquivos Locais'); if(!folder) return; if(!FOLDERS[folder]) FOLDERS[folder]=[]; files.forEach(f=>{ const url = URL.createObjectURL(f); addUrlToFolder(folder, url, 'local', f.name); log('Arquivo local adicionado: '+f.name); }); render(); });
+
+  // File upload
+  const fileUploadEl = document.getElementById('fileUpload'); if(fileUploadEl) fileUploadEl.addEventListener('change', async (ev)=>{ const f = ev.target.files[0]; if(!f) return; const text = await f.text(); const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean); let currentFolder = prompt('Nome da pasta para importar (ou deixe em branco para usar nomes do arquivo como ' + f.name + ')', f.name.replace(/\.[^/.]+$/, '')) || f.name; if(!FOLDERS[currentFolder]) FOLDERS[currentFolder]=[]; for(const ln of lines){ if(ln.includes('|')){ const [fld,u] = ln.split('|').map(s=>s.trim()); if(!FOLDERS[fld]) FOLDERS[fld]=[]; addUrlToFolder(fld,u,'import'); } else { addUrlToFolder(currentFolder, ln, 'import'); } } render(); log('Arquivo importado: '+f.name+' → '+lines.length+' linhas'); });
+
+  const importTxtBtn = document.getElementById('importTxtBtn'); if(importTxtBtn) importTxtBtn.addEventListener('click', ()=>{ const txt = prompt('Cole o conteúdo do TXT (uma URL por linha, ou linhas como Pasta|URL):'); if(!txt) return; const name = prompt('Nome da pasta (onde as URLs sem pasta irão):','Importado'); if(!FOLDERS[name]) FOLDERS[name]=[]; const lines = txt.split(/\r?\n/).map(l=>l.trim()).filter(Boolean); lines.forEach(ln=>{ if(ln.includes('|')){ const [fld,u]=ln.split('|').map(s=>s.trim()); if(!FOLDERS[fld]) FOLDERS[fld]=[]; addUrlToFolder(fld,u,'import'); } else addUrlToFolder(name,ln,'import'); }); render(); log('Texto importado: '+lines.length+' linhas'); });
+
+  // Export
+  const exportTxtBtn = document.getElementById('exportTxt'); const exportCsvBtn = document.getElementById('exportCsv'); const exportM3UBtn = document.getElementById('exportM3U'); const exportM3U8Btn = document.getElementById('exportM3U8'); function exportTXT(){ let out=''; for(const name in FOLDERS){ out += 'Pasta: '+name+'\n'; FOLDERS[name].forEach(it=> out += ` - [${it.server}] ${it.url}\n`); out += '\n'; } downloadBlob(out,'urls_export.txt'); } function exportCSV(){ let rows=['folder,name,url,server,source']; for(const name in FOLDERS){ FOLDERS[name].forEach(it=> rows.push(`${csvEscape(name)},${csvEscape(it.label)},${csvEscape(it.url)},${csvEscape(it.server)},${csvEscape(it.source)}`)); } downloadBlob(rows.join('\n'),'urls_export.csv'); } function exportM3U(){ let lines=['#EXTM3U']; for(const name in FOLDERS){ FOLDERS[name].forEach(it=>{ lines.push(`#EXTINF:-1,${name} - ${it.label}`); lines.push(it.url); }); } downloadBlob(lines.join('\n'),'playlist.m3u'); } function exportM3U8(){ let lines=['#EXTM3U']; for(const name in FOLDERS){ FOLDERS[name].forEach(it=>{ lines.push(`#EXTINF:-1,${name} - ${it.label}`); lines.push(it.url); }); } downloadBlob(lines.join('\n'),'playlist.m3u8'); } function csvEscape(s){ return '"'+String(s||'').replace(/"/g,'""')+'"'; } function downloadBlob(text,filename){ const blob = new Blob([text],{type:'text/plain'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); URL.revokeObjectURL(a.href); } if(exportTxtBtn) exportTxtBtn.addEventListener('click', ()=>{ exportTXT(); log('Exportado TXT'); }); if(exportCsvBtn) exportCsvBtn.addEventListener('click', ()=>{ exportCSV(); log('Exportado CSV'); }); if(exportM3UBtn) exportM3UBtn.addEventListener('click', ()=>{ exportM3U(); log('Exportado M3U'); }); if(exportM3U8Btn) exportM3U8Btn.addEventListener('click', ()=>{ exportM3U8(); log('Exportado M3U8'); });
+
+  const clearAllBtn = document.getElementById('clearAll'); if(clearAllBtn) clearAllBtn.addEventListener('click', ()=>{ if(confirm('Limpar todas as pastas?')){ FOLDERS={}; render(); log('Limpo geral'); } });
+  const applySortBtn = document.getElementById('applySort'); if(applySortBtn) applySortBtn.addEventListener('click', ()=>{ render(); log('Ordenação aplicada: '+document.getElementById('sortMode').value); }); const searchEl = document.getElementById('search'); if(searchEl) searchEl.addEventListener('input', ()=>{ render(); });
+
+  // Bookmarklets
+  const teraboxBM = `javascript:(function(){try{const anchors=Array.from(document.querySelectorAll('a')).filter(a=>a.href&&!a.href.includes('#'));const items=anchors.map(a=>({href:a.href,text:a.innerText||a.title||a.href}));(async()=>{const results=[];for(const it of items){results.push({page:it.href,name:it.text});}window.opener.postMessage({type:'extract_results',server:'TeraBox',data:results,source:location.href},'*');alert('Extração TeraBox concluída — volte ao painel.');})();}catch(e){alert('Erro:'+e.message)}})();`;
+  const driveBM = `javascript:(function(){try{const anchors=Array.from(document.querySelectorAll('a')).filter(a=>a.href&&(a.href.includes('/open')||a.href.includes('drive.google.com')));const items=anchors.map(a=>({href:a.href,text:a.innerText||a.title||a.href}));window.opener.postMessage({type:'extract_results',server:'Google Drive',data:items,source:location.href},'*');alert('Extração Google Drive enviada.');}catch(e){alert('Erro:'+e.message)}})();`;
+
+  function copyToClipboard(text){ navigator.clipboard.writeText(text).then(()=>{ alert('Bookmarklet copiado! Crie um favorito com ele e clique na aba da pasta pública.'); }, e=>{ prompt('Copie o código manualmente (Ctrl+C):', text); }); }
+  const btnTerabox = document.getElementById('copyTeraboxBM'); if(btnTerabox) btnTerabox.addEventListener('click', ()=> copyToClipboard(teraboxBM)); const btnDrive = document.getElementById('copyDriveBM'); if(btnDrive) btnDrive.addEventListener('click', ()=> copyToClipboard(driveBM));
+
+  // Receive postMessage
+  window.addEventListener('message', e=>{ try{ const d = e.data; if(!d || !d.type) return; if(d.type === 'extract_results'){ const folder = prompt('Nome da pasta para receber os resultados de extração (ex: Tubarão)'); if(!folder) return; if(!FOLDERS[folder]) FOLDERS[folder]=[]; const arr = d.data || []; arr.forEach(it=>{ const url = it.direct || it.page || it.href || it; addUrlToFolder(folder, url, d.server || 'bookmarklet', it.name || it.text || niceNameFromUrl(url)); }); render(); log(`Recebido ${arr.length} itens de ${d.server} (${d.source})`); } }catch(err){ log('Erro ao processar postMessage: '+err.message); } });
+
+  // INSPECT & JD-STYLE capture
+  const overlay = document.getElementById('overlay'); const checklist = document.getElementById('checklist'); const modalTitle = document.getElementById('modalTitle'); const closeOverlay = document.getElementById('closeOverlay'); if(closeOverlay) closeOverlay.addEventListener('click', ()=>{ if(overlay) overlay.style.display='none'; if(checklist) checklist.innerHTML=''; });
+
+  function addChecklistItem(url, meta){ const row = document.createElement('div'); row.className='check-row'; const left = document.createElement('div'); left.style.flex='1'; const label = document.createElement('label'); const chk = document.createElement('input'); chk.type='checkbox'; chk.checked = true; chk.dataset.url = url; label.appendChild(chk); const info = document.createElement('span'); info.style.marginLeft='8px'; info.textContent = `[${meta.type}] ${meta.title || url}`; label.appendChild(info); left.appendChild(label); const right = document.createElement('div'); const btnOpen = document.createElement('button'); btnOpen.className='btn'; btnOpen.textContent='Abrir'; btnOpen.onclick = ()=> window.open(url,'_blank'); right.appendChild(btnOpen); row.appendChild(left); row.appendChild(right); if(checklist) checklist.appendChild(row); }
+
+  async function fetchTextSafe(u){ try{ const r = await fetch(u, {credentials:'include'}); return await r.text(); }catch(e){ return null; } }
+
+  // Basic extract (previous inspect)
+  async function inspectUrl(url){ if(!url) return; if(modalTitle) modalTitle.textContent = 'Inspecionar: ' + url; if(overlay) overlay.style.display='flex'; if(checklist) checklist.innerHTML=''; log('Iniciando inspeção: '+url);
+    try{
+      const text = await fetchTextSafe(url);
+      if(!text){ if(checklist) checklist.innerHTML = '<div class="small">Não foi possível buscar (CORS). Use o bookmarklet na aba do site.</div>'; log('Inspeção cancelada — fetch falhou.'); return; }
+      const doc = new DOMParser().parseFromString(text,'text/html');
+      const found = new Map();
+      Array.from(doc.querySelectorAll('a[href]')).forEach(a=>{ try{ const h=a.href; if(h && !h.startsWith('#')) found.set(h,{type:'link',title:a.innerText||a.title||h}); }catch(e){} });
+      Array.from(doc.querySelectorAll('iframe[src]')).forEach(i=>{ try{ const h=i.src; if(h) found.set(h,{type:'iframe',title:i.title||h}); }catch(e){} });
+      Array.from(doc.querySelectorAll('video')).forEach(v=>{ try{ if(v.src) found.set(v.src,{type:'video',title:v.src}); Array.from(v.querySelectorAll('source')).forEach(s=>{ if(s.src) found.set(s.src,{type:'video',title:s.src}); }); }catch(e){} });
+      const regex = /(https?:\/\/(?:[\w.-]+)\/(?:[^\s"'<>]*\.(?:m3u8|m3u|mp4|mkv|ts|webm|avi|mpd|json|zip|rar|pdf)))/ig;
+      let m; while((m = regex.exec(text)) !== null){ found.set(m[1],{type:'media',title:m[1]}); }
+      const m2 = text.match(/https?:\/\/d[0-9]+\.baidupcs\.com\/file\/[^"'\s<>]*/g);
+      if(m2) m2.forEach(u=>found.set(u,{type:'baidupcs',title:u}));
+      if(found.size===0){ if(checklist) checklist.innerHTML = '<div class="small">Nenhuma URL encontrada (CORS ou conteúdo dinâmico?). Tente usar o bookmarklet na aba do site.</div>'; log('Inspeção terminou — nada encontrado.'); return; }
+      for(const [u,meta] of found.entries()){ addChecklistItem(u,meta); }
+      log('Inspeção terminou — encontrados '+found.size+' itens.');
+    }catch(err){ if(checklist) checklist.innerHTML = '<div class="small">Erro ao buscar (CORS ou bloqueio). Tente usar o bookmarklet na aba do site.</div>'; log('Erro na inspeção: '+err.message); }
+  }
+
+  // JDownloader-style deep capture
+  async function jdCapture(url){ if(!url) return; if(modalTitle) modalTitle.textContent = 'Captura JDownloader: ' + url; if(overlay) overlay.style.display='flex'; if(checklist) checklist.innerHTML=''; log('Iniciando captura estilo JDownloader: '+url);
+    try{
+      const text = await fetchTextSafe(url);
+      if(!text){ if(checklist) checklist.innerHTML = '<div class="small">Não foi possível buscar (CORS). Use o bookmarklet na aba do site.</div>'; log('JD captura cancelada — fetch falhou.'); return; }
+      const doc = new DOMParser().parseFromString(text,'text/html');
+      const found = new Map();
+
+      // 1) basic elements
+      Array.from(doc.querySelectorAll('a[href]')).forEach(a=>{ try{ const h=a.href; if(h && !h.startsWith('#')) found.set(h,{type:'link',title:a.innerText||a.title||h,source:'a'}); }catch(e){} });
+      Array.from(doc.querySelectorAll('iframe[src]')).forEach(i=>{ try{ const h=i.src; if(h) found.set(h,{type:'iframe',title:i.title||h,source:'iframe'}); }catch(e){} });
+      Array.from(doc.querySelectorAll('video')).forEach(v=>{ try{ if(v.src) found.set(v.src,{type:'video',title:v.src,source:'video'}); Array.from(v.querySelectorAll('source')).forEach(s=>{ if(s.src) found.set(s.src,{type:'video',title:s.src,source:'video-source'}); }); }catch(e){} });
+      Array.from(doc.querySelectorAll('script[src]')).forEach(s=>{ try{ const h=s.src; if(h) found.set(h,{type:'script',title:h,source:'script'}); }catch(e){} });
+      Array.from(doc.querySelectorAll('link[href]')).forEach(l=>{ try{ const h=l.href; if(h) found.set(h,{type:'link',title:h,source:'link'}); }catch(e){} });
+
+      // 2) scan inline scripts for URLs
+      Array.from(doc.querySelectorAll('script:not([src])')).forEach(s=>{ try{ const t = s.textContent || ''; const urls = extractUrlsFromText(t); urls.forEach(u=> found.set(u,{type:'script-inline',title:u,source:'inline-script'})); }catch(e){} });
+
+      // 3) try fetching external scripts to find embedded links (best-effort, may fail due to CORS)
+      const externalScripts = Array.from(doc.querySelectorAll('script[src]')).map(s=>s.src).filter(Boolean);
+      for(const sc of externalScripts){ const st = await fetchTextSafe(sc); if(!st) continue; const urls = extractUrlsFromText(st); urls.forEach(u=> found.set(u,{type:'script-external',title:u,source:sc})); }
+
+      // 4) regex search for media and common hosts
+      const regex = /(https?:\/\/(?:[\w.-]+)\/(?:[^\s"'<>]*\.(?:m3u8|m3u|mp4|mkv|ts|webm|avi|mpd|json|zip|rar|pdf|jpg|png|jpeg)))/ig;
+      let m; while((m = regex.exec(text)) !== null){ found.set(m[1],{type:'media',title:m[1],source:'regex'}); }
+
+      // 5) baidupcs
+      const m2 = text.match(/https?:\/\/d[0-9]+\.baidupcs\.com\/file\/[^"'\s<>]*/g);
+      if(m2) m2.forEach(u=>found.set(u,{type:'baidupcs',title:u,source:'regex'}));
+
+      // 6) also look for JSON endpoints in page that might contain URLs
+      const jsonUrls = Array.from(found.keys()).filter(u=>u.endsWith('.json') || u.includes('/api/') || u.includes('?format=json')).slice(0,10);
+      for(const ju of jsonUrls){ const jt = await fetchTextSafe(ju); if(!jt) continue; const urls = extractUrlsFromText(jt); urls.forEach(u=> found.set(u,{type:'json-embedded',title:u,source:ju})); }
+
+      if(found.size===0){ if(checklist) checklist.innerHTML = '<div class="small">Nenhuma URL encontrada (CORS ou conteúdo dinâmico?). Tente usar o bookmarklet na aba do site.</div>'; log('JD captura terminou — nada encontrado.'); return; }
+
+      // populate checklist with metadata similar to JDownloader
+      for(const [u,meta] of found.entries()){ addChecklistItem(u,meta); }
+      log('JD captura terminou — encontrados '+found.size+' itens.');
+    }catch(err){ if(checklist) checklist.innerHTML = '<div class="small">Erro na captura JDownloader: '+(err.message||err)+'</div>'; log('Erro na captura JD: '+err.message); }
+  }
+
+  // utility: extract URLs from text using robust regex
+  function extractUrlsFromText(text){ if(!text) return []; const urls = new Set(); const urlRegex = /https?:\/\/[0-9A-Za-z-._~:?#@!$&'()*+,;=\/\[\]%]+/g; let m; while((m = urlRegex.exec(text)) !== null){ const u = m[0].replace(/\)$/, ''); // trim trailing )
+      // filter out short/suspicious
+      if(u.length>10) urls.add(u);
+    } return Array.from(urls); }
+
+  // wire inspect and jd buttons
+  const inspectBtn = document.getElementById('inspectUrlBtn'); if(inspectBtn) inspectBtn.addEventListener('click', async ()=>{ const singleUrlEl = document.getElementById('singleUrl'); const url = singleUrlEl ? singleUrlEl.value.trim() : ''; if(!url){ alert('Cole a URL no campo ao lado antes de inspecionar.'); return; } await inspectUrl(url); });
+  const jdBtn = document.getElementById('jdCaptureBtn'); if(jdBtn) jdBtn.addEventListener('click', async ()=>{ const singleUrlEl = document.getElementById('singleUrl'); const url = singleUrlEl ? singleUrlEl.value.trim() : ''; if(!url){ alert('Cole a URL no campo ao lado antes de capturar.'); return; } await jdCapture(url); });
+
+  // add selected
+  const addSelectedBtn = document.getElementById('addSelected'); if(addSelectedBtn) addSelectedBtn.addEventListener('click', ()=>{ const checks = Array.from(checklist.querySelectorAll('input[type=checkbox]')).filter(c=>c.checked).map(c=>c.dataset.url); if(!checks.length){ alert('Nenhuma URL selecionada'); return; } const folder = prompt('Nome da pasta para adicionar as URLs selecionadas:','Importado'); if(!folder) return; if(!FOLDERS[folder]) FOLDERS[folder]=[]; checks.forEach(u=> addUrlToFolder(folder,u,'inspect')); if(overlay) overlay.style.display='none'; if(checklist) checklist.innerHTML=''; render(); log('Adicionadas '+checks.length+' URLs via inspeção.'); });
+
+  const copySelectedBtn = document.getElementById('copySelected'); if(copySelectedBtn) copySelectedBtn.addEventListener('click', ()=>{ const checks = Array.from(checklist.querySelectorAll('input[type=checkbox]')).filter(c=>c.checked).map(c=>c.dataset.url); if(!checks.length){ alert('Nenhuma selecionada'); return; } navigator.clipboard.writeText(checks.join('\n')); alert('Copiado '+checks.length+' URLs para a área de transferência'); });
+
+  const openInNewTabBtn = document.getElementById('openInNewTab'); if(openInNewTabBtn) openInNewTabBtn.addEventListener('click', ()=>{ const checks = Array.from(checklist.querySelectorAll('input[type=checkbox]')).filter(c=>c.checked).map(c=>c.dataset.url); if(!checks.length){ alert('Nenhuma selecionada'); return; } checks.forEach(u=> window.open(u,'_blank')); });
+
+  // export selected from modal
+  const exportSelectedTxt = document.getElementById('exportSelectedTxt'); if(exportSelectedTxt) exportSelectedTxt.addEventListener('click', ()=>{ const checks = Array.from(checklist.querySelectorAll('input[type=checkbox]')).filter(c=>c.checked).map(c=>c.dataset.url); if(!checks.length){ alert('Nenhuma selecionada'); return; } const out = checks.join('\n'); downloadBlob(out,'selected_urls.txt'); log('Exportado TXT com '+checks.length+' URLs.'); });
+  const exportSelectedM3U = document.getElementById('exportSelectedM3U'); if(exportSelectedM3U) exportSelectedM3U.addEventListener('click', ()=>{ const checks = Array.from(checklist.querySelectorAll('input[type=checkbox]')).filter(c=>c.checked).map(c=>c.dataset.url); if(!checks.length){ alert('Nenhuma selecionada'); return; } const lines = ['#EXTM3U']; checks.forEach(u=>{ lines.push('#EXTINF:-1,'+niceNameFromUrl(u)); lines.push(u); }); downloadBlob(lines.join('\n'),'selected_playlist.m3u'); log('Exportado M3U com '+checks.length+' URLs.'); });
+
+  // helper to open guide for bookmarklet
+  function openAndGuideExtract(folder){ const example = prompt('Deseja abrir a URL principal desta pasta para executar o bookmarklet? Cole a URL ou deixe em branco para só instruções.'); if(example){ try{ window.open(example, '_blank'); }catch(e){ log('Não foi possível abrir nova aba: '+e.message); } alert('Abra a aba que abriu e execute o bookmarklet (favorito) que você copiou no painel. Ao terminar, volte aqui.'); } else { alert('Para extrair automaticamente: 1) abra a pasta no site (TeraBox / Google Drive) 2) clique no favorito com o bookmarklet 3) aguarde e confirme.'); } }
+
+  // preload examples and init
+  FOLDERS['Exemplo Tubarão'] = [];
+  FOLDERS['Exemplo Bob Esponja'] = [];
+  render(); log('Painel iniciado — pronto para uso.');
+
+  // expose helpers for debugging
+  window._EX = { FOLDERS, inspectUrl, jdCapture, addUrlToFolder, openAndGuideExtract };
+
 });
-
-// Import TXT button (paste)
-document.getElementById('importTxtBtn').addEventListener('click', ()=>{
-  const txt = prompt('Cole o conteúdo do TXT (uma URL por linha, ou linhas como Pasta|URL):'); if(!txt) return; const name = prompt('Nome da pasta (onde as URLs sem pasta irão):','Importado'); if(!FOLDERS[name]) FOLDERS[name]=[];
-  const lines = txt.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  lines.forEach(ln=>{ if(ln.includes('|')){ const [fld,u]=ln.split('|').map(s=>s.trim()); if(!FOLDERS[fld]) FOLDERS[fld]=[]; addUrlToFolder(fld,u,'import'); } else addUrlToFolder(name,ln,'import'); }); render(); log('Texto importado: '+lines.length+' linhas');
-});
-
-// Export
-function exportTXT(){ let out=''; for(const name in FOLDERS){ out += 'Pasta: '+name+'\n'; FOLDERS[name].forEach(it=> out += ` - [${it.server}] ${it.url}\n`); out += '\n'; } downloadBlob(out,'urls_export.txt'); }
-function exportCSV(){ let rows=['folder,name,url,server,source']; for(const name in FOLDERS){ FOLDERS[name].forEach(it=> rows.push(`${csvEscape(name)},${csvEscape(it.label)},${csvEscape(it.url)},${csvEscape(it.server)},${csvEscape(it.source)}`)); } downloadBlob(rows.join('\n'),'urls_export.csv'); }
-function csvEscape(s){ return '"'+String(s||'').replace(/"/g,'""')+'"'; }
-function downloadBlob(text,filename){ const blob = new Blob([text],{type:'text/plain'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); URL.revokeObjectURL(a.href); }
-
-document.getElementById('exportTxt').addEventListener('click', ()=>{ exportTXT(); log('Exportado TXT'); });
-document.getElementById('exportCsv').addEventListener('click', ()=>{ exportCSV(); log('Exportado CSV'); });
-
-document.getElementById('clearAll').addEventListener('click', ()=>{ if(confirm('Limpar todas as pastas?')){ FOLDERS={}; render(); log('Limpo geral'); } });
-
-// Apply sort button
-document.getElementById('applySort').addEventListener('click', ()=>{ render(); log('Ordenação aplicada: '+document.getElementById('sortMode').value); });
-
-document.getElementById('search').addEventListener('input', ()=>{ render(); });
-
-// --- Bookmarklets ---
-const teraboxBM = `javascript:(function(){
-  try{
-    const anchors = Array.from(document.querySelectorAll('a')).filter(a=>a.href && !a.href.includes('#'));
-    const items = anchors.map(a=>({href:a.href,text:a.innerText||a.title||a.getAttribute('title')||a.href}));
-    async function fetchDirect(url){ try{ const r = await fetch(url,{credentials:'include'}); const t = await r.text(); const doc = new DOMParser().parseFromString(t,'text/html'); const video = doc.querySelector('video'); if(video && video.src) return video.src; const m = t.match(/https?:\\/\\/d[0-9]+\\.baidupcs\\.com\\/file\\/[^"'\\s<>]*/); if(m) return m[0]; const og = doc.querySelector('meta[property="og:video"]')||doc.querySelector('meta[property="og:video:url"]'); if(og) return og.content; return null;}catch(e){return null;} }
-    (async()=>{ const results=[]; for(const it of items){ const direct = await fetchDirect(it.href); results.push({page:it.href, name:it.text, direct}); } window.opener.postMessage({type:'extract_results', server:'TeraBox', data:results, source:location.href},'*'); alert('Extração TeraBox concluída — volte ao painel.'); })();
-  }catch(e){alert('Erro: '+e.message)}
-})();`;
-
-const driveBM = `javascript:(function(){
-  try{
-    // para Google Drive em lista pública
-    const anchors = Array.from(document.querySelectorAll('a')).filter(a=>a.href && a.href.includes('/open') || a.href.includes('drive.google.com'));
-    const items = anchors.map(a=>({href:a.href,text:a.innerText||a.title||a.href}));
-    window.opener.postMessage({type:'extract_results', server:'Google Drive', data:items, source:location.href},'*');
-    alert('Extração Google Drive: dados enviados ao painel (separe links com /open?id=... ou view).');
-  }catch(e){alert('Erro: '+e.message)}
-})();`;
-
-function copyToClipboard(text){ navigator.clipboard.writeText(text).then(()=>{ alert('Bookmarklet copiado! Crie um favorito com ele e clique na aba da pasta pública.'); }, e=>{ prompt('Copie o código manualmente (Ctrl+C):', text); }); }
-
-document.getElementById('copyTeraboxBM').addEventListener('click', ()=> copyToClipboard(teraboxBM));
-document.getElementById('copyDriveBM').addEventListener('click', ()=> copyToClipboard(driveBM));
-
-// Receive postMessage from bookmarklet
-window.addEventListener('message', e=>{
-  try{
-    const d = e.data; if(!d || !d.type) return; if(d.type === 'extract_results'){
-      const folder = prompt('Nome da pasta para receber os resultados de extração (ex: Tubar\u00e3o)'); if(!folder) return; if(!FOLDERS[folder]) FOLDERS[folder]=[];
-      const arr = d.data || [];
-      arr.forEach(it=>{
-        const url = it.direct || it.page || it.href || it;
-        addUrlToFolder(folder, url, d.server || 'bookmarklet', it.name || it.text || niceNameFromUrl(url));
-      }); render(); log(`Recebido ${arr.length} itens de ${d.server} (${d.source})`);
-    }
-  }catch(err){ log('Erro ao processar postMessage: '+err.message); }
-});
-
-// Helper to open new tab and guide
-function openAndGuideExtract(folder){ const example = prompt('Deseja abrir a URL principal desta pasta para executar o bookmarklet? Cole a URL ou deixe em branco para só instruções.'); if(example){ window.open(example,'_blank'); alert('Abra a aba que abriu e execute o bookmarklet que você copiou no painel (favoritos). Ao terminar, volte aqui.'); } else { alert('Para extrair automaticamente: 1) abra a pasta no site (TeraBox / Google Drive) 2) clique no favorito com o bookmarklet 3) aguarde e confirme.'); } }
-
-// Open default examples if you want (preload)
-FOLDERS['Exemplo Tubar\u00e3o'] = [];
-FOLDERS['Exemplo Bob Esponja'] = [];
-render();
-log('Painel iniciado — pronto para uso.');
 </script>
 </body>
 </html>
