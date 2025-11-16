@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>BRC — Captura de Links estilo JDownloader</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #111;
+    color: #fff;
+}
+header {
+    background: #222;
+    padding: 15px;
+    font-size: 22px;
+    font-weight: bold;
+    text-align: center;
+    border-bottom: 3px solid #0af;
+}
+.container {
+    padding: 15px;
+}
+input, button, textarea {
+    width: 100%;
+    padding: 10px;
+    margin-top: 8px;
+    border-radius: 6px;
+    border: none;
+    font-size: 16px;
+}
+button {
+    background: #0af;
+    color: #000;
+    cursor: pointer;
+    font-weight: bold;
+}
+button:hover {
+    background: #09f;
+}
+#results {
+    margin-top: 10px;
+    padding: 10px;
+    background: #222;
+    border-radius: 5px;
+    max-height: 320px;
+    overflow-y: auto;
+}
+.result-item {
+    padding: 10px;
+    background: #333;
+    margin-top: 6px;
+    border-radius: 6px;
+}
+#modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+#modalBox {
+    width: 90%;
+    max-width: 600px;
+    background: #222;
+    padding: 20px;
+    border-radius: 10px;
+}
+#checklist div {
+    background: #333;
+    padding: 8px;
+    border-radius: 5px;
+    margin: 5px 0;
+}
+</style>
+</head>
+<body>
+
+<header>BRC — Captura Automática de Links</header>
+
+<div class="container">
+
+<h3>🔍 Inspecionar URL</h3>
+<input type="text" id="singleUrl" placeholder="https://example.com">
+<button id="inspectUrlBtn">INSPECIONAR URL</button>
+
+<hr style="margin:20px 0; border-color:#333">
+
+<h3>📌 Links capturados</h3>
+<div id="results"></div>
+
+<button onclick="addSelected()">Adicionar Selecionados</button>
+<button onclick="copySelected()">Copiar Selecionados</button>
+<button onclick="openSelected()">Abrir Selecionados</button>
+<button onclick="generateTXT()">Gerar TXT</button>
+<button onclick="generateM3U()">Gerar M3U</button>
+<button onclick="deleteSelected()">Excluir Selecionados</button>
+
+<hr style="margin:20px 0; border-color:#333">
+
+<h3>📎 Bookmarklet JDownloader</h3>
+<textarea id="bookmarkletCode" readonly></textarea>
+<button onclick="copyBookmarklet()">Copiar Bookmarklet</button>
+
+</div>
+
+<!-- MODAL -->
+<div id="modal">
+    <div id="modalBox">
+        <h3 id="modalTitle"></h3>
+        <div id="checklist"></div>
+        <button onclick="closeModal()">Fechar</button>
+    </div>
+</div>
+
+<script>
+// LOG
+function log(msg) { console.log(msg); }
+
+// ----------------------
+//   FUNÇÃO PRINCIPAL
+// ----------------------
+async function inspectUrlAutomatic(url) {
+    log("Inspecionando " + url);
+
+    // 1) Tentar via fetch
+    try {
+        const res = await fetch(url);
+        const html = await res.text();
+        const links = extractLinks(html, url);
+
+        if (links.length > 0) {
+            showInspectionResults(url, links);
+            return;
+        }
+    } catch(e) {
+        log("Fetch bloqueado (CORS). Tentando iframe…");
+    }
+
+    // 2) Tentar iframe
+    try {
+        await inspectViaIframe(url);
+        return;
+    } catch(e) {
+        log("Iframe também bloqueado.");
+        alert("O site bloqueou CORS e iframe.
+Use o bookmarklet.");
+    }
+}
+
+// Extrair links do HTML
+function extractLinks(html, baseUrl) {
+    const temp = document.createElement("div");
+    temp.innerHTML = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+
+    const anchors = Array.from(temp.querySelectorAll("a"));
+    return anchors.map(a => ({
+        url: new URL(a.href, baseUrl).href,
+        title: a.innerText || a.href
+    }));
+}
+
+// Fallback iframe
+function inspectViaIframe(url) {
+    return new Promise((resolve, reject) => {
+        const iframe = document.createElement("iframe");
+        iframe.style.display = "none";
+        iframe.src = url;
+
+        iframe.onload = () => {
+            try {
+                const doc = iframe.contentDocument || iframe.contentWindow.document;
+                const anchors = Array.from(doc.querySelectorAll("a"));
+
+                const links = anchors.map(a => ({
+                    url: a.href,
+                    title: a.innerText || a.href
+                }));
+
+                showInspectionResults(url, links);
+
+                document.body.removeChild(iframe);
+                resolve(true);
+            } catch (e) {
+                document.body.removeChild(iframe);
+                reject(e);
+            }
+        };
+
+        document.body.appendChild(iframe);
+    });
+}
+
+// Mostrar modal
+function showInspectionResults(url, list) {
+    modalTitle.textContent = "Links encontrados em: " + url;
+    checklist.innerHTML = "";
+
+    list.forEach(link => {
+        const div = document.createElement("div");
+        div.innerHTML = \`
+            <input type="checkbox" value="\${link.url}">
+            <strong>\${link.title}</strong><br>
+            <small>\${link.url}</small>\`;
+        checklist.appendChild(div);
+    });
+
+    modal.style.display = "flex";
+}
+
+function closeModal() { modal.style.display = "none"; }
+
+// ----------------------
+//   LISTA PRINCIPAL
+// ----------------------
+const results = document.getElementById("results");
+
+function addSelected() {
+    document.querySelectorAll("#checklist input:checked").forEach(cb => {
+        addResultItem(cb.value);
+    });
+    alert("Adicionado!");
+}
+
+function addResultItem(url) {
+    const div = document.createElement("div");
+    div.className = "result-item";
+    div.innerHTML = \`
+        <input type="checkbox" class="resCheck" value="\${url}">
+        \${url}
+    \`;
+    results.appendChild(div);
+}
+
+function getSelected() {
+    return Array.from(document.querySelectorAll(".resCheck:checked")).map(i => i.value);
+}
+
+function copySelected() {
+    const list = getSelected().join("\n");
+    navigator.clipboard.writeText(list);
+    alert("Copiado!");
+}
+
+function openSelected() {
+    getSelected().forEach(link => window.open(link, "_blank"));
+}
+
+function deleteSelected() {
+    document.querySelectorAll(".resCheck:checked").forEach(cb => {
+        cb.parentElement.remove();
+    });
+}
+
+function generateTXT() {
+    const blob = new Blob([getSelected().join("\n")], { type: "text/plain" });
+    download(blob, "links.txt");
+}
+
+function generateM3U() {
+    const content = "#EXTM3U\n" + getSelected().map(u => u).join("\n");
+    const blob = new Blob([content], { type: "audio/x-mpegurl" });
+    download(blob, "lista.m3u");
+}
+
+function download(blob, name) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+}
+
+// ----------------------
+//   BOOKMARKLET
+// ----------------------
+const bm = `
+javascript:(function(){
+let links=[...document.querySelectorAll('a')].map(a=>a.href);
+prompt("Links encontrados:", links.join("\n"));
+})();`;
+
+document.getElementById("bookmarkletCode").value = bm;
+
+function copyBookmarklet() {
+    navigator.clipboard.writeText(bm);
+    alert("Bookmarklet copiado!");
+}
+
+// ----------------------
+// BOTÃO INSPECIONAR
+// ----------------------
+document.getElementById("inspectUrlBtn").onclick = () => {
+    const url = document.getElementById("singleUrl").value.trim();
+    if (!url) return alert("Digite uma URL!");
+    inspectUrlAutomatic(url);
+};
+
+</script>
+
+</body>
+</html>
