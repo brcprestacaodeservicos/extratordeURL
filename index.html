@@ -1,304 +1,543 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<title>BRC — Captura de Links estilo JDownloader</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Extractor Multi-Servidores — Painel Completo</title>
 <style>
-body {
-    margin: 0;
-    font-family: Arial, sans-serif;
-    background: #111;
-    color: #fff;
-}
-header {
-    background: #222;
-    padding: 15px;
-    font-size: 22px;
-    font-weight: bold;
-    text-align: center;
-    border-bottom: 3px solid #0af;
-}
-.container {
-    padding: 15px;
-}
-input, button, textarea {
-    width: 100%;
-    padding: 10px;
-    margin-top: 8px;
-    border-radius: 6px;
-    border: none;
-    font-size: 16px;
-}
-button {
-    background: #0af;
-    color: #000;
-    cursor: pointer;
-    font-weight: bold;
-}
-button:hover {
-    background: #09f;
-}
-#results {
-    margin-top: 10px;
-    padding: 10px;
-    background: #222;
-    border-radius: 5px;
-    max-height: 320px;
-    overflow-y: auto;
-}
-.result-item {
-    padding: 10px;
-    background: #333;
-    margin-top: 6px;
-    border-radius: 6px;
-}
-#modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.8);
-    display: none;
-    align-items: center;
-    justify-content: center;
-}
-#modalBox {
-    width: 90%;
-    max-width: 600px;
-    background: #222;
-    padding: 20px;
-    border-radius: 10px;
-}
-#checklist div {
-    background: #333;
-    padding: 8px;
-    border-radius: 5px;
-    margin: 5px 0;
-}
+:root{--bg:#071024;--panel:#071226;--muted:#9fb0c8;--accent:#06b6d4;--card:#0b1622}
+*{box-sizing:border-box;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial}
+body{margin:0;background:linear-gradient(180deg,#041124,#071a2a);color:#e6eef6;min-height:100vh;display:flex}
+.sidebar{width:320px;padding:18px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.04));backdrop-filter:blur(6px);overflow:auto}
+.brand{font-weight:700;font-size:16px;color:var(--accent);margin-bottom:10px}
+.small{font-size:13px;color:var(--muted)}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;cursor:pointer}
+.btn.primary{background:linear-gradient(90deg,#06b6d4,#7c3aed);color:white}
+.input, textarea, select{width:100%;padding:10px;border-radius:8px;background:#021427;border:1px solid rgba(255,255,255,0.03);color:inherit;margin-top:8px}
+.content{flex:1;padding:18px;overflow:auto}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03));padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.folder-card{padding:12px;border-radius:10px;background:#021427}
+.folder-title{font-weight:700}
+.item{padding:8px;border-radius:8px;background:#061826;margin-top:8px;display:flex;justify-content:space-between;align-items:center}
+.item small{color:var(--muted)}
+.controls{display:flex;gap:8px;margin-top:8px}
+.footer-note{font-size:13px;color:var(--muted);margin-top:8px}
+.tag{background:rgba(255,255,255,0.03);padding:4px 8px;border-radius:999px;font-size:12px}
+.file-input{display:flex;gap:8px;align-items:center}
+.added-list{max-height:140px;overflow:auto;padding:8px;background:#061826;border-radius:8px;margin-bottom:8px}
+.added-row{padding:6px;border-bottom:1px dashed rgba(255,255,255,0.02);display:flex;justify-content:space-between;align-items:center}
+.overlay{position:fixed;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:9999}
+.modal{background:#071226;border:1px solid rgba(255,255,255,0.04);padding:16px;border-radius:12px;max-width:920px;width:92%;max-height:86%;overflow:auto}
+.checklist{max-height:420px;overflow:auto;margin-top:8px}
+.check-row{padding:8px;border-bottom:1px dashed rgba(255,255,255,0.02);display:flex;justify-content:space-between;align-items:center}
+@media(max-width:900px){.sidebar{display:none}}
 </style>
 </head>
 <body>
+<div class="sidebar">
+  <div class="brand">Extractor Multi-Servidores</div>
+  <div class="small">Crie pastas, adicione URLs (Terabox, Google Drive, MEGA, Pendrive/local etc.), importe/exporte e extraia automaticamente onde possível.</div>
 
-<header>BRC — Captura Automática de Links</header>
+  <div class="card">
+    <div class="small">Criar pasta</div>
+    <input id="folderName" class="input" placeholder="Nome da pasta (ex: Tubarão)" />
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+      <input id="singleUrl" class="input" placeholder="Cole uma URL (opcional)" />
+    </div>
+    <div class="controls" style="margin-top:8px">
+      <button class="btn primary" id="createFolder">Criar + Adicionar</button>
+      <button class="btn" id="inspectUrlBtn">🔍 Inspecionar URL</button>
+      <button class="btn" id="jdCaptureBtn">⚡ Capturar (Estilo JDownloader)</button>
+      <button class="btn" id="importTxtBtn">Importar TXT</button>
+    </div>
+    <div class="footer-note">Você também pode arrastar e soltar arquivos locais (pendrive) ao painel principal para adicioná-los como URLs locais.</div>
+  </div>
 
-<div class="container">
+  <div class="card">
+    <div class="small">Bookmarklets / Extração automática</div>
+    <div class="footer-note" style="margin-top:6px">Para extrair automaticamente de páginas que bloqueiam CORS (Terabox / Google Drive), abra a pasta em outra aba e execute o bookmarklet — ele enviará os dados de volta ao painel.</div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+      <button class="btn" id="copyTeraboxBM">📋 Copiar Bookmarklet (TeraBox)</button>
+      <button class="btn" id="copyDriveBM">📋 Copiar Bookmarklet (Google Drive)</button>
+    </div>
+  </div>
 
-<h3>🔍 Inspecionar URL</h3>
-<input type="text" id="singleUrl" placeholder="https://example.com">
-<button id="inspectUrlBtn">INSPECIONAR URL</button>
+  <div class="card">
+    <div class="small">Importar/Exportar</div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input id="fileUpload" type="file" class="input" />
+    </div>
+    <div class="controls">
+      <button class="btn" id="exportTxt">Exportar TXT</button>
+      <button class="btn" id="exportCsv">Exportar CSV</button>
+      <button class="btn" id="exportM3U">Exportar M3U</button>
+      <button class="btn" id="exportM3U8">Exportar M3U8</button>
+    </div>
+  </div>
 
-<hr style="margin:20px 0; border-color:#333">
+  <div class="card">
+    <div class="small">Opções de ordenação</div>
+    <select id="sortMode" class="input">
+      <option value="natural">Ordem detectada (natural)</option>
+      <option value="episodic">Ordenar por episódio (E01, Ep.1, Capítulo)</option>
+      <option value="alpha">Alfabética</option>
+    </select>
+    <button class="btn" id="applySort">Aplicar ordenação</button>
+  </div>
 
-<h3>📌 Links capturados</h3>
-<div id="results"></div>
-
-<button onclick="addSelected()">Adicionar Selecionados</button>
-<button onclick="copySelected()">Copiar Selecionados</button>
-<button onclick="openSelected()">Abrir Selecionados</button>
-<button onclick="generateTXT()">Gerar TXT</button>
-<button onclick="generateM3U()">Gerar M3U</button>
-<button onclick="deleteSelected()">Excluir Selecionados</button>
-
-<hr style="margin:20px 0; border-color:#333">
-
-<h3>📎 Bookmarklet JDownloader</h3>
-<textarea id="bookmarkletCode" readonly></textarea>
-<button onclick="copyBookmarklet()">Copiar Bookmarklet</button>
-
+  <div style="height:40px"></div>
 </div>
 
-<!-- MODAL -->
-<div id="modal">
-    <div id="modalBox">
-        <h3 id="modalTitle"></h3>
-        <div id="checklist"></div>
-        <button onclick="closeModal()">Fechar</button>
+<div class="content">
+  <div class="header">
+    <div>
+      <div style="font-size:20px;font-weight:700">Painel de Pastas</div>
+      <div class="small">Arraste arquivos locais aqui, use bookmarklets para extração automática em páginas públicas ou cole URLs manualmente.</div>
     </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="search" class="input" placeholder="Filtrar por nome / URL..." style="width:320px" />
+      <button class="btn" id="clearAll">Limpar tudo</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="small">URLs adicionadas (Nome da pasta | Nome | URL)</div>
+    <div id="addedList" class="added-list"></div>
+  </div>
+
+  <div id="foldersGrid" class="grid"></div>
+
+  <div class="card">
+    <div class="small">Console / Log</div>
+    <textarea id="log" style="height:160px;width:100%;margin-top:8px;background:#021427;border:1px solid rgba(255,255,255,0.03);color:inherit;padding:8px;border-radius:8px" readonly></textarea>
+  </div>
+</div>
+
+<!-- Overlay modal for inspect results -->
+<div id="overlay" class="overlay">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div style="display:flex;justify-content:space-between;align-items:center"><strong id="modalTitle">Inspecionar URL</strong><button class="btn" id="closeOverlay">Fechar</button></div>
+    <div id="modalBody" style="margin-top:8px">
+      <div class="small">Selecione as URLs encontradas para adicionar à pasta.</div>
+      <div id="checklist" class="checklist"></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn primary" id="addSelected">Adicionar Selecionados</button>
+        <button class="btn" id="copySelected">Copiar Selecionados</button>
+        <button class="btn" id="openInNewTab">Abrir Selecionados</button>
+        <button class="btn" id="exportSelectedTxt">Gerar TXT</button>
+        <button class="btn" id="exportSelectedM3U">Gerar M3U</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
-// LOG
-function log(msg) { console.log(msg); }
+document.addEventListener('DOMContentLoaded', ()=>{
 
-// ----------------------
-//   FUNÇÃO PRINCIPAL
-// ----------------------
-async function inspectUrlAutomatic(url) {
-    log("Inspecionando " + url);
+  // --- Data model ---
+  let FOLDERS = {};
+  let uidCounter = 1;
+  const logEl = document.getElementById('log');
+  const addedListEl = document.getElementById('addedList');
 
-    // 1) Tentar via fetch
-    try {
-        const res = await fetch(url);
-        const html = await res.text();
-        const links = extractLinks(html, url);
+  function log(msg){ if(!logEl) return; logEl.value = new Date().toLocaleTimeString() + ' — ' + msg + '\n' + logEl.value; }
+  function genId(){ return 'i'+(uidCounter++); }
 
-        if (links.length > 0) {
-            showInspectionResults(url, links);
-            return;
-        }
-    } catch(e) {
-        log("Fetch bloqueado (CORS). Tentando iframe…");
+  function detectServer(url){ if(!url) return 'local'; const u = url.toLowerCase(); if(u.includes('terabox')||u.includes('baidupcs')||u.includes('1024terabox')) return 'TeraBox'; if(u.includes('drive.google')||u.includes('docs.google')) return 'Google Drive'; if(u.includes('mega.nz')) return 'MEGA'; if(u.startsWith('file://')||u.startsWith('blob:')||u.startsWith('data:')) return 'Local'; if(u.includes('dropbox.com')) return 'Dropbox'; return 'Outro'; }
+  function niceNameFromUrl(url){ try{ const u = new URL(url); let p = decodeURIComponent(u.pathname.split('/').pop()||u.hostname); return p.replace(/\+/g,' '); }catch(e){ return url; } }
+
+  // Episode detection & sorting
+  function episodeKey(name){ if(!name) return Number.MAX_SAFE_INTEGER;
+    const s = name.toLowerCase();
+    const m = s.match(/(?:ep(?:isod)?|epis[oó]dio|cap(?:ítulo|itulo)?|cap|s\d+e(\d+)|e\.?\s*(\d{1,3})|ep\.?\s*(\d{1,3})|ep(\d{1,3}))[^\d]*(\d{0,3})/);
+    if(m){ for(let i=1;i<m.length;i++){ if(m[i]) return parseInt(m[i].replace(/^0+/,'')) || 0; } }
+    const m2 = s.match(/(\d{1,3})/);
+    if(m2) return parseInt(m2[1]);
+    return Number.MAX_SAFE_INTEGER;
+  }
+  function sortFolderItems(items, mode){
+    if(mode==='alpha') return items.sort((a,b)=> (niceNameFromUrl(a.label||a.url).localeCompare(niceNameFromUrl(b.label||b.url))));
+    if(mode==='episodic') return items.sort((a,b)=> (episodeKey(a.label||a.url) - episodeKey(b.label||b.url)));
+    // natural
+    return items.sort((a,b)=> (episodeKey(a.label||a.url) - episodeKey(b.label||b.url)));
+  }
+
+  // --- Rendering ---
+  const foldersGrid = document.getElementById('foldersGrid');
+  function render(){
+    renderAddedList();
+    const qEl = document.getElementById('search');
+    const q = (qEl && qEl.value ? qEl.value.toLowerCase().trim() : '');
+    if(!foldersGrid) return;
+    foldersGrid.innerHTML = '';
+    for(const name in FOLDERS){
+      const col = document.createElement('div'); col.className='folder-card card';
+      const title = document.createElement('div'); title.className='folder-title'; title.textContent = name + ` `;
+      const stats = document.createElement('span'); stats.className='tag'; stats.textContent = FOLDERS[name].length + ' items';
+      title.appendChild(stats);
+      col.appendChild(title);
+
+      const controls = document.createElement('div'); controls.style.marginTop='8px';
+      const btnExtract = document.createElement('button'); btnExtract.className='btn'; btnExtract.textContent='Extrair (bookmarklet)';
+      btnExtract.onclick = ()=>{ openAndGuideExtract(name); };
+      const btnEdit = document.createElement('button'); btnEdit.className='btn'; btnEdit.textContent='Editar';
+      btnEdit.onclick = ()=>{ const newName = prompt('Novo nome da pasta:', name); if(newName && newName!==name){ FOLDERS[newName]=FOLDERS[name]; delete FOLDERS[name]; render(); log('Pasta renomeada: '+name+' → '+newName); } };
+      const btnDelete = document.createElement('button'); btnDelete.className='btn'; btnDelete.textContent='Excluir';
+      btnDelete.onclick = ()=>{ if(confirm('Excluir pasta '+name+'?')){ delete FOLDERS[name]; render(); log('Pasta excluída: '+name); } };
+      controls.appendChild(btnExtract); controls.appendChild(btnEdit); controls.appendChild(btnDelete);
+      col.appendChild(controls);
+
+      const items = sortFolderItems([...FOLDERS[name]], document.getElementById('sortMode').value);
+      items.forEach(it=>{
+        if(q && !( (it.label||'').toLowerCase().includes(q) || (it.url||'').toLowerCase().includes(q) )) return;
+        const div = document.createElement('div'); div.className='item';
+        const left = document.createElement('div');
+        left.innerHTML = `<div style="font-weight:600">${it.label||niceNameFromUrl(it.url)}</div><small>${it.server} • ${it.url}</small>`;
+        const right = document.createElement('div');
+        const aOpen = document.createElement('a'); aOpen.href = it.url; aOpen.target='_blank'; aOpen.className='btn'; aOpen.textContent='Abrir';
+        const aCopy = document.createElement('button'); aCopy.className='btn'; aCopy.textContent='Copiar';
+        aCopy.onclick=()=>{ navigator.clipboard.writeText(it.url); log('Copiado: '+it.url); };
+        const aRemove = document.createElement('button'); aRemove.className='btn'; aRemove.textContent='Remover';
+        aRemove.onclick=()=>{ if(confirm('Remover esta URL?')){ FOLDERS[name] = FOLDERS[name].filter(x=>x.id!==it.id); render(); log('URL removida: '+it.url); } };
+        right.appendChild(aOpen); right.appendChild(aCopy); right.appendChild(aRemove);
+        div.appendChild(left); div.appendChild(right);
+        col.appendChild(div);
+      });
+
+      foldersGrid.appendChild(col);
     }
+  }
 
-    // 2) Tentar iframe
-    try {
-        await inspectViaIframe(url);
+  function renderAddedList(){
+    if(!addedListEl) return;
+    addedListEl.innerHTML = '';
+    for(const name in FOLDERS){
+      FOLDERS[name].forEach(it=>{
+        const row = document.createElement('div'); row.className='added-row';
+        row.innerHTML = `<div><strong>${name}</strong> | ${it.label||niceNameFromUrl(it.url)}</div><div><a href='${it.url}' target='_blank' class='small'>${it.url}</a></div>`;
+        addedListEl.appendChild(row);
+      });
+    }
+  }
+
+  // --- Folder management ---
+  const createFolderBtn = document.getElementById('createFolder');
+  if(createFolderBtn) createFolderBtn.addEventListener('click', ()=>{
+    const nameEl = document.getElementById('folderName'); const singleUrlEl = document.getElementById('singleUrl');
+    const name = nameEl ? nameEl.value.trim() : ''; const url = singleUrlEl ? singleUrlEl.value.trim() : '';
+    if(!name){ alert('Digite o nome da pasta'); return; }
+    if(!FOLDERS[name]) FOLDERS[name]=[];
+    if(url){ addUrlToFolder(name, url, 'manual'); if(singleUrlEl) singleUrlEl.value=''; }
+    render(); log('Pasta criada: '+name);
+  });
+
+  function addUrlToFolder(folder, url, sourceLabel='manual', label=null){
+    if(!FOLDERS[folder]) FOLDERS[folder]=[];
+    const item = { id: genId(), url: url, server: detectServer(url), label: label||niceNameFromUrl(url), source: sourceLabel };
+    FOLDERS[folder].push(item);
+  }
+
+  // Drag & drop local files
+  window.addEventListener('dragover', e=>{ e.preventDefault(); });
+  window.addEventListener('drop', e=>{ e.preventDefault(); const files = Array.from((e.dataTransfer && e.dataTransfer.files) || []); if(!files.length) return;
+    const folder = prompt('Nome da pasta para adicionar os arquivos arrastados:','Arquivos Locais'); if(!folder) return; if(!FOLDERS[folder]) FOLDERS[folder]=[];
+    files.forEach(f=>{ const url = URL.createObjectURL(f); addUrlToFolder(folder, url, 'local', f.name); log('Arquivo local adicionado: '+f.name); });
+    render();
+  });
+
+  // File upload (TXT/CSV)
+  const fileUploadEl = document.getElementById('fileUpload');
+  if(fileUploadEl) fileUploadEl.addEventListener('change', async (ev)=>{
+    const f = ev.target.files[0]; if(!f) return; const text = await f.text();
+    const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    let currentFolder = prompt('Nome da pasta para importar (ou deixe em branco para usar nomes do arquivo como ' + f.name + ')', f.name.replace(/\.[^/.]+$/, '')) || f.name;
+    if(!FOLDERS[currentFolder]) FOLDERS[currentFolder]=[];
+    for(const ln of lines){
+      if(ln.includes('|')){ const [fld,u] = ln.split('|').map(s=>s.trim()); if(!FOLDERS[fld]) FOLDERS[fld]=[]; addUrlToFolder(fld,u,'import'); }
+      else { addUrlToFolder(currentFolder, ln, 'import'); }
+    }
+    render(); log('Arquivo importado: '+f.name+' → '+lines.length+' linhas');
+  });
+
+  const importTxtBtn = document.getElementById('importTxtBtn');
+  if(importTxtBtn) importTxtBtn.addEventListener('click', ()=>{
+    const txt = prompt('Cole o conteúdo do TXT (uma URL por linha, ou linhas como Pasta|URL):'); if(!txt) return;
+    const name = prompt('Nome da pasta (onde as URLs sem pasta irão):','Importado'); if(!FOLDERS[name]) FOLDERS[name]=[];
+    const lines = txt.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    lines.forEach(ln=>{ if(ln.includes('|')){ const [fld,u]=ln.split('|').map(s=>s.trim()); if(!FOLDERS[fld]) FOLDERS[fld]=[]; addUrlToFolder(fld,u,'import'); } else addUrlToFolder(name,ln,'import'); });
+    render(); log('Texto importado: '+lines.length+' linhas');
+  });
+
+  // Export functions
+  const exportTxtBtn = document.getElementById('exportTxt'); const exportCsvBtn = document.getElementById('exportCsv');
+  const exportM3UBtn = document.getElementById('exportM3U'); const exportM3U8Btn = document.getElementById('exportM3U8');
+
+  function exportTXT(){ let out=''; for(const name in FOLDERS){ out += 'Pasta: '+name+'\n'; FOLDERS[name].forEach(it=> out += ` - [${it.server}] ${it.url}\n`); out += '\n'; } downloadBlob(out,'urls_export.txt'); }
+  function exportCSV(){ let rows=['folder,name,url,server,source']; for(const name in FOLDERS){ FOLDERS[name].forEach(it=> rows.push(`${csvEscape(name)},${csvEscape(it.label)},${csvEscape(it.url)},${csvEscape(it.server)},${csvEscape(it.source)}`)); } downloadBlob(rows.join('\n'),'urls_export.csv'); }
+  function exportM3U(){ let lines=['#EXTM3U']; for(const name in FOLDERS){ FOLDERS[name].forEach(it=>{ lines.push(`#EXTINF:-1,${name} - ${it.label}`); lines.push(it.url); }); } downloadBlob(lines.join('\n'),'playlist.m3u'); }
+  function exportM3U8(){ let lines=['#EXTM3U']; for(const name in FOLDERS){ FOLDERS[name].forEach(it=>{ lines.push(`#EXTINF:-1,${name} - ${it.label}`); lines.push(it.url); }); } downloadBlob(lines.join('\n'),'playlist.m3u8'); }
+  function csvEscape(s){ return '"'+String(s||'').replace(/"/g,'""')+'"'; }
+  function downloadBlob(text,filename){ const blob = new Blob([text],{type:'text/plain'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click(); URL.revokeObjectURL(a.href); }
+
+  if(exportTxtBtn) exportTxtBtn.addEventListener('click', ()=>{ exportTXT(); log('Exportado TXT'); });
+  if(exportCsvBtn) exportCsvBtn.addEventListener('click', ()=>{ exportCSV(); log('Exportado CSV'); });
+  if(exportM3UBtn) exportM3UBtn.addEventListener('click', ()=>{ exportM3U(); log('Exportado M3U'); });
+  if(exportM3U8Btn) exportM3U8Btn.addEventListener('click', ()=>{ exportM3U8(); log('Exportado M3U8'); });
+
+  const clearAllBtn = document.getElementById('clearAll');
+  if(clearAllBtn) clearAllBtn.addEventListener('click', ()=>{ if(confirm('Limpar todas as pastas?')){ FOLDERS={}; render(); log('Limpo geral'); } });
+
+  const applySortBtn = document.getElementById('applySort');
+  if(applySortBtn) applySortBtn.addEventListener('click', ()=>{ render(); log('Ordenação aplicada: '+document.getElementById('sortMode').value); });
+
+  const searchEl = document.getElementById('search');
+  if(searchEl) searchEl.addEventListener('input', ()=>{ render(); });
+
+  // --- Bookmarklets (simple, robust) ---
+  // These bookmarklets collect anchor hrefs and postMessage back to opener
+  const teraboxBM = "javascript:(function(){try{const anchors=Array.from(document.querySelectorAll('a')).map(a=>({href:a.href,text:a.innerText||a.title||a.href}));window.opener.postMessage({type:'extract_results',server:'TeraBox',data:anchors,source:location.href},'*');alert('Extração TeraBox concluída — volte ao painel.');}catch(e){alert('Erro: '+e.message)}})();";
+  const driveBM = "javascript:(function(){try{const anchors=Array.from(document.querySelectorAll('a')).filter(a=>a.href&&(a.href.includes('/open')||a.href.includes('drive.google.com'))).map(a=>({href:a.href,text:a.innerText||a.title||a.href}));window.opener.postMessage({type:'extract_results',server:'Google Drive',data:anchors,source:location.href},'*');alert('Extração Google Drive enviada.');}catch(e){alert('Erro: '+e.message)}})();";
+
+  function copyToClipboard(text){ navigator.clipboard.writeText(text).then(()=>{ alert('Bookmarklet copiado! Crie um favorito com ele e clique na aba da pasta pública.'); }, e=>{ prompt('Copie o código manualmente (Ctrl+C):', text); }); }
+  const btnTerabox = document.getElementById('copyTeraboxBM'); if(btnTerabox) btnTerabox.addEventListener('click', ()=> copyToClipboard(teraboxBM));
+  const btnDrive = document.getElementById('copyDriveBM'); if(btnDrive) btnDrive.addEventListener('click', ()=> copyToClipboard(driveBM));
+
+  // Receive postMessage from bookmarklet
+  window.addEventListener('message', e=>{
+    try{
+      const d = e.data; if(!d || !d.type) return;
+      if(d.type === 'extract_results'){
+        const folder = prompt('Nome da pasta para receber os resultados de extração (ex: Tubar\u00e3o)');
+        if(!folder) return;
+        if(!FOLDERS[folder]) FOLDERS[folder]=[];
+        const arr = d.data || [];
+        arr.forEach(it=>{
+          const url = it.direct || it.page || it.href || it;
+          addUrlToFolder(folder, url, d.server || 'bookmarklet', it.name || it.text || niceNameFromUrl(url));
+        });
+        render(); log(`Recebido ${arr.length} itens de ${d.server} (${d.source})`);
+      }
+    }catch(err){ log('Erro ao processar postMessage: '+err.message); }
+  });
+
+  // --- INSPECT & JD-STYLE capture helpers ---
+  const overlay = document.getElementById('overlay');
+  const checklist = document.getElementById('checklist');
+  const modalTitle = document.getElementById('modalTitle');
+  const closeOverlay = document.getElementById('closeOverlay');
+  if(closeOverlay) closeOverlay.addEventListener('click', ()=>{ if(overlay) overlay.style.display='none'; if(checklist) checklist.innerHTML=''; });
+
+  function addChecklistItem(url, meta){
+    const row = document.createElement('div'); row.className='check-row';
+    const left = document.createElement('div'); left.style.flex='1';
+    const label = document.createElement('label');
+    const chk = document.createElement('input'); chk.type='checkbox'; chk.checked = true; chk.dataset.url = url;
+    label.appendChild(chk);
+    const info = document.createElement('span'); info.style.marginLeft='8px'; info.textContent = `[${meta.type}] ${meta.title || url}`;
+    label.appendChild(info);
+    left.appendChild(label);
+    const right = document.createElement('div');
+    const btnOpen = document.createElement('button'); btnOpen.className='btn'; btnOpen.textContent='Abrir';
+    btnOpen.onclick = ()=> window.open(url,'_blank');
+    right.appendChild(btnOpen);
+    row.appendChild(left); row.appendChild(right);
+    if(checklist) checklist.appendChild(row);
+  }
+
+  async function fetchTextSafe(u){
+    try{
+      const r = await fetch(u, {credentials:'include', mode:'cors'});
+      return await r.text();
+    }catch(e){ return null; }
+  }
+
+  // Robust extractor: fetch -> parse -> regexes
+  async function inspectUrl(url){
+    if(!url) return;
+    if(modalTitle) modalTitle.textContent = 'Inspecionar: ' + url;
+    if(overlay) overlay.style.display='flex';
+    if(checklist) checklist.innerHTML='';
+    log('Iniciando inspeção: '+url);
+    try{
+      const text = await fetchTextSafe(url);
+      if(!text){
+        if(checklist) checklist.innerHTML = '<div class="small">Não foi possível buscar (CORS). Use o bookmarklet na aba do site.</div>';
+        log('Inspeção cancelada — fetch falhou.');
         return;
-    } catch(e) {
-        log("Iframe também bloqueado.");
-        alert("O site bloqueou CORS e iframe.
-Use o bookmarklet.");
+      }
+      const doc = new DOMParser().parseFromString(text,'text/html');
+      const found = new Map();
+
+      // anchors, iframes, videos
+      Array.from(doc.querySelectorAll('a[href]')).forEach(a=>{ try{ const h=a.href; if(h && !h.startsWith('#')) found.set(h,{type:'link',title:a.innerText||a.title||h}); }catch(e){} });
+      Array.from(doc.querySelectorAll('iframe[src]')).forEach(i=>{ try{ const h=i.src; if(h) found.set(h,{type:'iframe',title:i.title||h}); }catch(e){} });
+      Array.from(doc.querySelectorAll('video')).forEach(v=>{ try{ if(v.src) found.set(v.src,{type:'video',title:v.src}); Array.from(v.querySelectorAll('source')).forEach(s=>{ if(s.src) found.set(s.src,{type:'video',title:s.src}); }); }catch(e){} });
+
+      // regex: media files
+      const mediaRegex = /(https?:\/\/(?:[\w.-]+)\/(?:[^\s"'<>]*\.(?:m3u8|m3u|mp4|mkv|ts|webm|avi|mpd|json|zip|rar|pdf)))/ig;
+      let m;
+      while((m = mediaRegex.exec(text)) !== null){ found.set(m[1],{type:'media',title:m[1]}); }
+
+      // baidupcs specific
+      const m2 = text.match(/https?:\/\/d[0-9]+\.baidupcs\.com\/file\/[^"'\s<>]*/g);
+      if(m2) m2.forEach(u=>found.set(u,{type:'baidupcs',title:u}));
+
+      if(found.size===0){
+        if(checklist) checklist.innerHTML = '<div class="small">Nenhuma URL encontrada (CORS ou conteúdo dinâmico?). Tente usar o bookmarklet na aba do site.</div>';
+        log('Inspeção terminou — nada encontrado.');
+        return;
+      }
+
+      for(const [u,meta] of found.entries()){ addChecklistItem(u,meta); }
+      log('Inspeção terminou — encontrados '+found.size+' itens.');
+    }catch(err){
+      if(checklist) checklist.innerHTML = '<div class="small">Erro ao buscar (CORS ou bloqueio). Tente usar o bookmarklet na aba do site.</div>';
+      log('Erro na inspeção: '+err.message);
     }
-}
+  }
 
-// Extrair links do HTML
-function extractLinks(html, baseUrl) {
-    const temp = document.createElement("div");
-    temp.innerHTML = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "");
+  // JDownloader-style capture with extra effort
+  async function jdCapture(url){
+    if(!url) return;
+    if(modalTitle) modalTitle.textContent = 'Captura JDownloader: ' + url;
+    if(overlay) overlay.style.display='flex';
+    if(checklist) checklist.innerHTML='';
+    log('Iniciando captura estilo JDownloader: '+url);
+    try{
+      const text = await fetchTextSafe(url);
+      if(!text){ if(checklist) checklist.innerHTML = '<div class="small">Não foi possível buscar (CORS). Use o bookmarklet na aba do site.</div>'; log('JD captura cancelada — fetch falhou.'); return; }
+      const doc = new DOMParser().parseFromString(text,'text/html');
+      const found = new Map();
 
-    const anchors = Array.from(temp.querySelectorAll("a"));
-    return anchors.map(a => ({
-        url: new URL(a.href, baseUrl).href,
-        title: a.innerText || a.href
-    }));
-}
+      // basic elements
+      Array.from(doc.querySelectorAll('a[href]')).forEach(a=>{ try{ const h=a.href; if(h && !h.startsWith('#')) found.set(h,{type:'link',title:a.innerText||a.title||h,source:'a'}); }catch(e){} });
+      Array.from(doc.querySelectorAll('iframe[src]')).forEach(i=>{ try{ const h=i.src; if(h) found.set(h,{type:'iframe',title:i.title||h,source:'iframe'}); }catch(e){} });
+      Array.from(doc.querySelectorAll('video')).forEach(v=>{ try{ if(v.src) found.set(v.src,{type:'video',title:v.src,source:'video'}); Array.from(v.querySelectorAll('source')).forEach(s=>{ if(s.src) found.set(s.src,{type:'video',title:s.src,source:'video-source'}); }); }catch(e){} });
+      Array.from(doc.querySelectorAll('script[src]')).forEach(s=>{ try{ const h=s.src; if(h) found.set(h,{type:'script',title:h,source:'script'}); }catch(e){} });
+      Array.from(doc.querySelectorAll('link[href]')).forEach(l=>{ try{ const h=l.href; if(h) found.set(h,{type:'link',title:h,source:'link'}); }catch(e){} });
 
-// Fallback iframe
-function inspectViaIframe(url) {
-    return new Promise((resolve, reject) => {
-        const iframe = document.createElement("iframe");
-        iframe.style.display = "none";
-        iframe.src = url;
+      // inline scripts
+      Array.from(doc.querySelectorAll('script:not([src])')).forEach(s=>{ try{ const t = s.textContent || ''; const urls = extractUrlsFromText(t); urls.forEach(u=> found.set(u,{type:'script-inline',title:u,source:'inline-script'})); }catch(e){} });
 
-        iframe.onload = () => {
-            try {
-                const doc = iframe.contentDocument || iframe.contentWindow.document;
-                const anchors = Array.from(doc.querySelectorAll("a"));
+      // external scripts: best-effort (may fail due to CORS)
+      const externalScripts = Array.from(doc.querySelectorAll('script[src]')).map(s=>s.src).filter(Boolean);
+      for(const sc of externalScripts){
+        try{
+          const st = await fetchTextSafe(sc);
+          if(!st) continue;
+          const urls = extractUrlsFromText(st);
+          urls.forEach(u=> found.set(u,{type:'script-external',title:u,source:sc}));
+        }catch(e){}
+      }
 
-                const links = anchors.map(a => ({
-                    url: a.href,
-                    title: a.innerText || a.href
-                }));
+      // regex search for media
+      const regex = /(https?:\/\/(?:[\w.-]+)\/(?:[^\s"'<>]*\.(?:m3u8|m3u|mp4|mkv|ts|webm|avi|mpd|json|zip|rar|pdf|jpg|png|jpeg)))/ig;
+      let mm;
+      while((mm = regex.exec(text)) !== null){ found.set(mm[1],{type:'media',title:mm[1],source:'regex'}); }
 
-                showInspectionResults(url, links);
+      // baidupcs
+      const m3 = text.match(/https?:\/\/d[0-9]+\.baidupcs\.com\/file\/[^"'\s<>]*/g);
+      if(m3) m3.forEach(u=>found.set(u,{type:'baidupcs',title:u,source:'regex'}));
 
-                document.body.removeChild(iframe);
-                resolve(true);
-            } catch (e) {
-                document.body.removeChild(iframe);
-                reject(e);
-            }
-        };
+      // look for json endpoints
+      const jsonUrls = Array.from(found.keys()).filter(u=>u.endsWith('.json') || u.includes('/api/') || u.includes('?format=json')).slice(0,10);
+      for(const ju of jsonUrls){
+        try{
+          const jt = await fetchTextSafe(ju);
+          if(!jt) continue;
+          const urls = extractUrlsFromText(jt);
+          urls.forEach(u=> found.set(u,{type:'json-embedded',title:u,source:ju}));
+        }catch(e){}
+      }
 
-        document.body.appendChild(iframe);
-    });
-}
+      if(found.size===0){ if(checklist) checklist.innerHTML = '<div class="small">Nenhuma URL encontrada (CORS ou conteúdo dinâmico?). Tente usar o bookmarklet na aba do site.</div>'; log('JD captura terminou — nada encontrado.'); return; }
 
-// Mostrar modal
-function showInspectionResults(url, list) {
-    modalTitle.textContent = "Links encontrados em: " + url;
-    checklist.innerHTML = "";
+      for(const [u,meta] of found.entries()){ addChecklistItem(u,meta); }
+      log('JD captura terminou — encontrados '+found.size+' itens.');
+    }catch(err){ if(checklist) checklist.innerHTML = '<div class="small">Erro na captura JDownloader: '+(err.message||err)+'</div>'; log('Erro na captura JD: '+(err.message||err)); }
+  }
 
-    list.forEach(link => {
-        const div = document.createElement("div");
-        div.innerHTML = \`
-            <input type="checkbox" value="\${link.url}">
-            <strong>\${link.title}</strong><br>
-            <small>\${link.url}</small>\`;
-        checklist.appendChild(div);
-    });
+  // utility: extract URLs from text using robust regex
+  function extractUrlsFromText(text){ if(!text) return []; const urls = new Set(); const urlRegex = /https?:\/\/[0-9A-Za-z-._~:?#@!$&'()*+,;=\/\[\]%]+/g; let m; while((m = urlRegex.exec(text)) !== null){ const u = m[0].replace(/\)$/, ''); if(u.length>10) urls.add(u); } return Array.from(urls); }
 
-    modal.style.display = "flex";
-}
+  // wire inspect and jd buttons
+  const inspectBtn = document.getElementById('inspectUrlBtn');
+  if(inspectBtn) inspectBtn.addEventListener('click', async ()=>{
+    const singleUrlEl = document.getElementById('singleUrl'); const url = singleUrlEl ? singleUrlEl.value.trim() : '';
+    if(!url){ alert('Cole a URL no campo ao lado antes de inspecionar.'); return; }
+    await inspectUrl(url);
+  });
 
-function closeModal() { modal.style.display = "none"; }
+  const jdBtn = document.getElementById('jdCaptureBtn');
+  if(jdBtn) jdBtn.addEventListener('click', async ()=>{
+    const singleUrlEl = document.getElementById('singleUrl'); const url = singleUrlEl ? singleUrlEl.value.trim() : '';
+    if(!url){ alert('Cole a URL no campo ao lado antes de capturar.'); return; }
+    await jdCapture(url);
+  });
 
-// ----------------------
-//   LISTA PRINCIPAL
-// ----------------------
-const results = document.getElementById("results");
+  // add selected
+  const addSelectedBtn = document.getElementById('addSelected');
+  if(addSelectedBtn) addSelectedBtn.addEventListener('click', ()=>{
+    const checks = Array.from(checklist.querySelectorAll('input[type=checkbox]')).filter(c=>c.checked).map(c=>c.dataset.url);
+    if(!checks.length){ alert('Nenhuma URL selecionada'); return; }
+    const folder = prompt('Nome da pasta para adicionar as URLs selecionadas:','Importado'); if(!folder) return; if(!FOLDERS[folder]) FOLDERS[folder]=[];
+    checks.forEach(u=> addUrlToFolder(folder,u,'inspect'));
+    if(overlay) overlay.style.display='none'; if(checklist) checklist.innerHTML='';
+    render(); log('Adicionadas '+checks.length+' URLs via inspeção.');
+  });
 
-function addSelected() {
-    document.querySelectorAll("#checklist input:checked").forEach(cb => {
-        addResultItem(cb.value);
-    });
-    alert("Adicionado!");
-}
+  const copySelectedBtn = document.getElementById('copySelected');
+  if(copySelectedBtn) copySelectedBtn.addEventListener('click', ()=>{
+    const checks = Array.from(checklist.querySelectorAll('input[type=checkbox]')).filter(c=>c.checked).map(c=>c.dataset.url);
+    if(!checks.length){ alert('Nenhuma selecionada'); return; }
+    navigator.clipboard.writeText(checks.join('\n')); alert('Copiado '+checks.length+' URLs para a área de transferência');
+  });
 
-function addResultItem(url) {
-    const div = document.createElement("div");
-    div.className = "result-item";
-    div.innerHTML = \`
-        <input type="checkbox" class="resCheck" value="\${url}">
-        \${url}
-    \`;
-    results.appendChild(div);
-}
+  const openInNewTabBtn = document.getElementById('openInNewTab');
+  if(openInNewTabBtn) openInNewTabBtn.addEventListener('click', ()=>{
+    const checks = Array.from(checklist.querySelectorAll('input[type=checkbox]')).filter(c=>c.checked).map(c=>c.dataset.url);
+    if(!checks.length){ alert('Nenhuma selecionada'); return; }
+    checks.forEach(u=> window.open(u,'_blank'));
+  });
 
-function getSelected() {
-    return Array.from(document.querySelectorAll(".resCheck:checked")).map(i => i.value);
-}
+  // export selected from modal
+  const exportSelectedTxt = document.getElementById('exportSelectedTxt');
+  if(exportSelectedTxt) exportSelectedTxt.addEventListener('click', ()=>{
+    const checks = Array.from(checklist.querySelectorAll('input[type=checkbox]')).filter(c=>c.checked).map(c=>c.dataset.url);
+    if(!checks.length){ alert('Nenhuma selecionada'); return; }
+    const out = checks.join('\n'); downloadBlob(out,'selected_urls.txt'); log('Exportado TXT com '+checks.length+' URLs.');
+  });
 
-function copySelected() {
-    const list = getSelected().join("\n");
-    navigator.clipboard.writeText(list);
-    alert("Copiado!");
-}
+  const exportSelectedM3U = document.getElementById('exportSelectedM3U');
+  if(exportSelectedM3U) exportSelectedM3U.addEventListener('click', ()=>{
+    const checks = Array.from(checklist.querySelectorAll('input[type=checkbox]')).filter(c=>c.checked).map(c=>c.dataset.url);
+    if(!checks.length){ alert('Nenhuma selecionada'); return; }
+    const lines = ['#EXTM3U']; checks.forEach(u=>{ lines.push('#EXTINF:-1,'+niceNameFromUrl(u)); lines.push(u); });
+    downloadBlob(lines.join('\n'),'selected_playlist.m3u'); log('Exportado M3U com '+checks.length+' URLs.');
+  });
 
-function openSelected() {
-    getSelected().forEach(link => window.open(link, "_blank"));
-}
+  // helper to open guide for bookmarklet
+  function openAndGuideExtract(folder){
+    const example = prompt('Deseja abrir a URL principal desta pasta para executar o bookmarklet? Cole a URL ou deixe em branco para só instruções.');
+    if(example){
+      try{ window.open(example, '_blank'); }catch(e){ log('Não foi possível abrir nova aba: '+e.message); }
+      alert('Abra a aba que abriu e execute o bookmarklet (favorito) que você copiou no painel. Ao terminar, volte aqui.');
+    } else {
+      alert('Para extrair automaticamente: 1) abra a pasta no site (TeraBox / Google Drive) 2) clique no favorito com o bookmarklet 3) aguarde e confirme.');
+    }
+  }
 
-function deleteSelected() {
-    document.querySelectorAll(".resCheck:checked").forEach(cb => {
-        cb.parentElement.remove();
-    });
-}
+  // preload examples and init
+  FOLDERS['Exemplo Tubar\u00e3o'] = [];
+  FOLDERS['Exemplo Bob Esponja'] = [];
+  render(); log('Painel iniciado — pronto para uso.');
 
-function generateTXT() {
-    const blob = new Blob([getSelected().join("\n")], { type: "text/plain" });
-    download(blob, "links.txt");
-}
+  // expose helpers for debugging (optional)
+  window._EX = { FOLDERS, inspectUrl, jdCapture, addUrlToFolder, openAndGuideExtract };
 
-function generateM3U() {
-    const content = "#EXTM3U\n" + getSelected().map(u => u).join("\n");
-    const blob = new Blob([content], { type: "audio/x-mpegurl" });
-    download(blob, "lista.m3u");
-}
-
-function download(blob, name) {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    a.click();
-}
-
-// ----------------------
-//   BOOKMARKLET
-// ----------------------
-const bm = `
-javascript:(function(){
-let links=[...document.querySelectorAll('a')].map(a=>a.href);
-prompt("Links encontrados:", links.join("\n"));
-})();`;
-
-document.getElementById("bookmarkletCode").value = bm;
-
-function copyBookmarklet() {
-    navigator.clipboard.writeText(bm);
-    alert("Bookmarklet copiado!");
-}
-
-// ----------------------
-// BOTÃO INSPECIONAR
-// ----------------------
-document.getElementById("inspectUrlBtn").onclick = () => {
-    const url = document.getElementById("singleUrl").value.trim();
-    if (!url) return alert("Digite uma URL!");
-    inspectUrlAutomatic(url);
-};
-
+});
 </script>
-
 </body>
 </html>
